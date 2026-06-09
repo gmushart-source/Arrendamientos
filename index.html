@@ -359,7 +359,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <div class="callout neutral">
           <div class="callout-label">Ingresos/mes</div>
           <div class="callout-num" id="stat-ingresos">$0</div>
-          <div class="callout-sub">USD aprox.</div>
+          <div class="callout-sub">10% de pagos del mes</div>
         </div>
       </div>
 
@@ -998,17 +998,41 @@ function ingresoMensual(monto, frecuencia) {
 }
 
 // ===================== CÁLCULO PRÓXIMO COBRO =====================
-function calcProxCobro(ultimoPago, frecuencia) {
+// La fecha de cobro se ancla al día de inicio del contrato.
+// Si se pasa diaInicio, el próximo cobro cae ese mismo día del mes siguiente (o en múltiplos).
+function calcProxCobro(ultimoPago, frecuencia, diaInicio) {
   if (!ultimoPago) return null;
   const d = new Date(ultimoPago + 'T00:00:00');
   const meses = frecuencia === 'Trimestral' ? 3 : frecuencia === 'Bimestral' ? 2 : 1;
   d.setMonth(d.getMonth() + meses);
+  // Si tenemos el día de inicio del contrato, anclar el día de cobro a ese día
+  if (diaInicio) {
+    const maxDia = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); // último día del mes
+    d.setDate(Math.min(diaInicio, maxDia));
+  }
   return d.toISOString().split('T')[0];
+}
+
+// Devuelve el día de inicio del contrato dado su id
+function diaInicioContrato(c) {
+  if (!c || !c.inicio) return null;
+  return new Date(c.inicio + 'T00:00:00').getDate();
+}
+
+// Ventana de pago válida: desde la fecha de cobro hasta 5 días después
+function esPagoEnVentana(fechaPago, fechaCobro) {
+  if (!fechaPago || !fechaCobro) return true; // sin restricción si no hay dato
+  const fp = new Date(fechaPago + 'T00:00:00');
+  const fc = new Date(fechaCobro + 'T00:00:00');
+  const limite = new Date(fc);
+  limite.setDate(limite.getDate() + 5);
+  return fp >= fc && fp <= limite;
 }
 
 function proxCobroStr(c) {
   if (c.proxCobro) return c.proxCobro;
-  if (c.ultimoPago) return calcProxCobro(c.ultimoPago, c.frecuencia);
+  if (c.ultimoPago) return calcProxCobro(c.ultimoPago, c.frecuencia, diaInicioContrato(c));
+  if (c.inicio) return c.inicio;
   return null;
 }
 
@@ -1050,7 +1074,9 @@ function toggleCanonCond() {
 function recalcProxCobro() {
   const up = document.getElementById('f-ultimo-pago').value;
   const fr = document.getElementById('f-frecuencia').value;
-  const prox = up ? calcProxCobro(up, fr) : '';
+  const ini = document.getElementById('f-inicio').value;
+  const diaInicio = ini ? new Date(ini + 'T00:00:00').getDate() : null;
+  const prox = up ? calcProxCobro(up, fr, diaInicio) : '';
   document.getElementById('f-prox-cobro').value = prox;
 }
 
@@ -1066,15 +1092,28 @@ function updateStats() {
   }).length;
   const renov = contratos.filter(c => c.estado === 'Renovación').length;
   const insp = inspecciones.filter(i => i.estado === 'Pendiente').length;
-  const ingresos = contratos
-    .filter(c => c.estado === 'Activo' || c.estado === 'Por vencer')
-    .reduce((sum, c) => sum + ingresoMensual(c.monto, c.frecuencia), 0);
+  // Ingresos/mes = 10% de los pagos registrados en el mes calendario actual
+  const ahora = new Date();
+  const mesActual = ahora.getMonth();
+  const anioActual = ahora.getFullYear();
+  let totalPagosMes = 0;
+  contratos.forEach(c => {
+    if (!c.historialPagos) return;
+    c.historialPagos.forEach(p => {
+      if (!p.fecha) return;
+      const fp = new Date(p.fecha + 'T00:00:00');
+      if (fp.getMonth() === mesActual && fp.getFullYear() === anioActual) {
+        totalPagosMes += parseFloat(p.monto) || 0;
+      }
+    });
+  });
+  const ingresos = totalPagosMes * 0.10;
 
   document.getElementById('stat-activos').textContent = activos;
   document.getElementById('stat-vencer').textContent = vencer;
   document.getElementById('stat-renov').textContent = renov;
   document.getElementById('stat-insp').textContent = insp;
-  document.getElementById('stat-ingresos').textContent = '$' + Math.round(ingresos).toLocaleString('es');
+  document.getElementById('stat-ingresos').textContent = '$' + ingresos.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('sb-total').textContent = contratos.length;
   document.getElementById('sb-vencer').textContent = vencer;
   document.getElementById('sb-renov').textContent = renov;
@@ -1428,7 +1467,9 @@ async function saveContrato() {
 
   const ultimoPago = document.getElementById('f-ultimo-pago').value;
   const frecuencia = document.getElementById('f-frecuencia').value;
-  const proxCobroVal = document.getElementById('f-prox-cobro').value || (ultimoPago ? calcProxCobro(ultimoPago, frecuencia) : '');
+  const inicioVal = document.getElementById('f-inicio').value;
+  const diaInicio = inicioVal ? new Date(inicioVal + 'T00:00:00').getDate() : null;
+  const proxCobroVal = document.getElementById('f-prox-cobro').value || (ultimoPago ? calcProxCobro(ultimoPago, frecuencia, diaInicio) : (inicioVal || ''));
 
   const c = {
     id: editingId || Date.now().toString(),
@@ -1498,17 +1539,28 @@ function openRegistrarPago(id) {
   document.getElementById('p-obs').value = '';
 
   // Info del contrato
-  const prox = calcProxCobro(hoy, c.frecuencia);
+  const diaIni = diaInicioContrato(c);
+  const prox = calcProxCobro(hoy, c.frecuencia, diaIni);
+  // Calcular fecha límite de pago (fecha de cobro + 5 días)
+  const proxCobroActual = proxCobroStr(c);
+  let ventanaInfo = '';
+  if (proxCobroActual) {
+    const fechaLimite = new Date(proxCobroActual + 'T00:00:00');
+    fechaLimite.setDate(fechaLimite.getDate() + 5);
+    const limStr = fechaLimite.toISOString().split('T')[0];
+    ventanaInfo = `<div style="font-size:11px; color:var(--accent); margin-top:4px; font-family:var(--mono);">📅 Ventana de pago: ${formatDate(proxCobroActual)} → ${formatDate(limStr)}</div>`;
+  }
   document.getElementById('pago-contrato-info').innerHTML = `
     <div style="font-weight:700; font-size:14px; margin-bottom:4px;">${c.nombre}</div>
     <div style="color:var(--text2);">👤 ${c.inquilino} · $${parseFloat(c.monto).toLocaleString('es')} · ${c.frecuencia}</div>
     ${c.direccion ? `<div style="color:var(--text3); font-size:11px; margin-top:3px;">📍 ${c.direccion}</div>` : ''}
+    ${ventanaInfo}
   `;
   document.getElementById('p-prox-label').textContent = formatDate(prox);
 
   // Actualizar preview al cambiar fecha
   document.getElementById('p-fecha').onchange = function() {
-    const np = calcProxCobro(this.value, c.frecuencia);
+    const np = calcProxCobro(this.value, c.frecuencia, diaIni);
     document.getElementById('p-prox-label').textContent = formatDate(np);
   };
 
@@ -1524,7 +1576,17 @@ async function confirmarPago() {
   if (idx < 0) return;
   const c = contratos[idx];
 
-  const proxCobro = calcProxCobro(fecha, c.frecuencia);
+  const proxCobroActual = proxCobroStr(c);
+  // Validar ventana de pago: desde la fecha de cobro hasta 5 días después
+  if (proxCobroActual && !esPagoEnVentana(fecha, proxCobroActual)) {
+    const fc = new Date(proxCobroActual + 'T00:00:00');
+    const limite = new Date(fc);
+    limite.setDate(limite.getDate() + 5);
+    notify(`⚠️ La fecha de pago debe estar entre ${formatDate(proxCobroActual)} y ${formatDate(limite.toISOString().split('T')[0])}`);
+    return;
+  }
+
+  const proxCobro = calcProxCobro(fecha, c.frecuencia, diaInicioContrato(c));
 
   // Guardar en historial de pagos
   if (!c.historialPagos) c.historialPagos = [];
