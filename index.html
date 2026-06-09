@@ -352,6 +352,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       <span class="s-icon">🔍</span> Inspecciones
       <span class="s-badge blue" id="sb-insp">0</span>
     </div>
+    <div class="sidebar-item" onclick="showView('canon-revisiones')">
+      <span class="s-icon">📋</span> Revisiones de canon
+      <span class="s-badge" style="background:var(--purple-border);" id="sb-canon-rev">0</span>
+    </div>
     <div class="sidebar-label">Acciones</div>
     <div class="sidebar-item" onclick="openContrato()">
       <span class="s-icon">＋</span> Nuevo contrato
@@ -564,6 +568,36 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <div class="empty-state" id="insp-empty">
           <div class="e-icon">🔍</div>
           <div>No hay inspecciones registradas.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== REVISIONES DE CANON ===== -->
+    <div id="view-canon-revisiones" class="view" style="display:none">
+      <div class="db-toolbar" style="margin-bottom:14px;">
+        <div class="section-title" style="margin:0; flex:1">📋 Revisiones de canon</div>
+      </div>
+      <!-- Filtro por estado -->
+      <div class="db-toolbar" style="margin-bottom:12px;">
+        <div class="db-filter" id="canon-rev-filter">
+          <button class="db-filter-btn active" onclick="filtrarCanonRevisiones('todas')">Todas</button>
+          <button class="db-filter-btn" onclick="filtrarCanonRevisiones('pendiente')">Pendientes</button>
+          <button class="db-filter-btn" onclick="filtrarCanonRevisiones('realizada')">Realizadas</button>
+        </div>
+      </div>
+      <div class="db-table">
+        <div class="canon-rev-row header-row" style="display:grid; grid-template-columns:1fr 130px 110px 110px 80px 90px; align-items:center; padding:0 14px; min-height:34px; gap:10px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--text3); font-family:var(--mono); background:var(--surface2);">
+          <div>Propiedad / Inquilino</div>
+          <div>Condición</div>
+          <div>Fecha evaluación</div>
+          <div>Fecha revisada</div>
+          <div>Ajuste</div>
+          <div>Estado</div>
+        </div>
+        <div id="canon-rev-rows"></div>
+        <div class="empty-state" id="canon-rev-empty">
+          <div class="e-icon">📋</div>
+          <div>No hay revisiones de canon registradas.</div>
         </div>
       </div>
     </div>
@@ -796,7 +830,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
             <input type="checkbox" id="f-canon-revision-hecha" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
             <span>✅ Revisión de canon realizada</span>
           </label>
-          <span style="font-size:10px; color:var(--text2); margin-top:4px; display:block;">Marca cuando ya hayas completado la revisión y ajuste del canon para este período.</span>
+          <span style="font-size:10px; color:var(--text2); margin-top:4px; display:block;">Al marcar desde el dashboard se registrará la fecha y observaciones. Aquí puedes forzar el estado manualmente.</span>
         </div>
       </div>
     </div>
@@ -920,6 +954,33 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   </div>
 </div>
 
+<!-- ===== MODAL COMPLETAR REVISIÓN DE CANON ===== -->
+<div class="modal-backdrop" id="modal-completar-canon">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">📋 Registrar revisión de canon</div>
+    <div id="completar-canon-info" style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:18px; font-size:13px;"></div>
+    <div class="form-grid full">
+      <div class="field">
+        <label>Fecha en que se realizó la revisión *</label>
+        <input type="date" id="cc-fecha">
+      </div>
+      <div class="field">
+        <label>Nuevo monto del canon (USD)</label>
+        <input type="number" id="cc-nuevo-monto" placeholder="Dejar vacío si no hubo cambio" min="0" step="0.01">
+        <span class="hint">Si el canon cambia, se actualizará en el contrato.</span>
+      </div>
+      <div class="field">
+        <label>Observaciones</label>
+        <textarea id="cc-obs" placeholder="Ej: Ajuste acordado con el inquilino, sin cambios…" style="min-height:65px"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('modal-completar-canon')">Cancelar</button>
+      <button class="btn primary" onclick="confirmarRevisionCanon()">✅ Guardar revisión</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL RENOVAR CONTRATO ===== -->
 <div class="modal-backdrop" id="modal-renovar">
   <div class="modal" style="width:580px">
@@ -1026,10 +1087,13 @@ const ADMIN_EMAIL = ""; // Se detecta desde Firestore — ver lógica abajo
 // ===================== DATA STORE =====================
 let contratos = [];
 let inspecciones = [];
+let canonRevisiones = [];
 let editingId = null;
 let activeTab = 0;
 let unsubContratos = null;
 let unsubInspecciones = null;
+let unsubCanonRevisiones = null;
+let canonRevFiltro = 'todas';
 
 // ===================== AUTH UI =====================
 function mostrarLogin() {
@@ -1085,6 +1149,14 @@ function iniciarEscucha() {
   unsubInspecciones = onSnapshot(collection(db, 'inspecciones'), snap => {
     inspecciones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refresh();
+  });
+
+  if (unsubCanonRevisiones) unsubCanonRevisiones();
+  unsubCanonRevisiones = onSnapshot(collection(db, 'canonRevisiones'), snap => {
+    canonRevisiones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    canonRevisiones.sort((a, b) => (b.fechaRegistro || 0) - (a.fechaRegistro || 0));
+    renderCanonRevisiones();
+    updateCanonRevBadge();
   });
 }
 
@@ -1776,7 +1848,7 @@ function renderTables() {
   });
 }
 
-function refresh() { updateStats(); updateAlerts(); renderTables(); }
+function refresh() { updateStats(); updateAlerts(); renderTables(); updateCanonRevBadge(); }
 
 // ===================== BÚSQUEDA DASHBOARD =====================
 let dashSearchQuery = '';
@@ -1957,7 +2029,7 @@ function openDetailPanel(id) {
       ${c.canonDesc ? `<div class="detail-row"><span class="detail-label">Detalle</span><span class="detail-val">${c.canonDesc}</span></div>` : ''}
       <div class="detail-row"><span class="detail-label">Ajuste estimado</span><span class="detail-val">${c.canonAjuste || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Fecha evaluación</span><span class="detail-val">${formatDate(c.canonFecha)}</span></div>
-      <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? '<span style="color:var(--accent);font-weight:700;">✅ Sí, completada</span>' : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
+      <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? `<span style="color:var(--accent);font-weight:700;">✅ ${c.canonFechaRevision ? formatDate(c.canonFechaRevision) : 'Sí'}${c.montoAnterior && c.montoAnterior !== c.monto ? ' · Cambió de $' + parseFloat(c.montoAnterior).toLocaleString('es') + ' → $' + parseFloat(c.monto).toLocaleString('es') : ''}</span>` : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
       ${c.observaciones ? `<div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-val">${c.observaciones}</span></div>` : ''}
     </div>
 
@@ -2419,15 +2491,81 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
 
-// ===================== TOGGLE CANON REVISION =====================
-async function toggleCanonRevision(contractId) {
+// ===================== REVISIONES DE CANON =====================
+let completandoCanonId = null;
+
+function toggleCanonRevision(contractId) {
   const c = contratos.find(x => x.id === contractId);
   if (!c) return;
-  const nuevoValor = !c.canonRevisionHecha;
-  await setDoc(doc(db, 'contratos', contractId), { ...c, canonRevisionHecha: nuevoValor });
-  notify(nuevoValor ? '✅ Revisión de canon marcada como realizada' : '↩ Revisión de canon desmarcada');
+
+  // Si ya está marcada → desmarcar directamente
+  if (c.canonRevisionHecha) {
+    setDoc(doc(db, 'contratos', contractId), { ...c, canonRevisionHecha: false, canonFechaRevision: null });
+    notify('↩ Revisión de canon desmarcada');
+    return;
+  }
+
+  // Si está pendiente → abrir modal para fecha y notas
+  completandoCanonId = contractId;
+  const hoy = new Date().toISOString().split('T')[0];
+  document.getElementById('cc-fecha').value = hoy;
+  document.getElementById('cc-nuevo-monto').value = '';
+  document.getElementById('cc-obs').value = '';
+  document.getElementById('completar-canon-info').innerHTML = `
+    <div style="font-weight:700; font-size:14px; margin-bottom:3px;">🏠 ${c.nombre}</div>
+    <div style="color:var(--text2); margin-bottom:3px;">👤 ${c.inquilino}</div>
+    <div style="color:var(--text3); font-size:11px; font-family:var(--mono);">
+      Canon actual: $${parseFloat(c.monto).toLocaleString('es')} USD
+      ${c.canonCond ? ' · ' + c.canonCond : ''}
+      ${c.canonFecha ? ' · Fecha eval.: ' + formatDate(c.canonFecha) : ''}
+    </div>
+  `;
+  document.getElementById('modal-completar-canon').classList.add('open');
+}
+
+async function confirmarRevisionCanon() {
+  const fecha = document.getElementById('cc-fecha').value;
+  if (!fecha) { notify('⚠️ Ingresa la fecha de la revisión'); return; }
+  const c = contratos.find(x => x.id === completandoCanonId);
+  if (!c) return;
+
+  const nuevoMonto = document.getElementById('cc-nuevo-monto').value;
+  const obs = document.getElementById('cc-obs').value.trim();
+
+  // Actualizar contrato: marcar revisión hecha, guardar fecha, actualizar monto si cambió
+  const updateC = {
+    ...c,
+    canonRevisionHecha: true,
+    canonFechaRevision: fecha,
+  };
+  if (nuevoMonto && parseFloat(nuevoMonto) !== parseFloat(c.monto)) {
+    updateC.montoAnterior = c.monto;
+    updateC.monto = parseFloat(nuevoMonto);
+  }
+  await setDoc(doc(db, 'contratos', completandoCanonId), updateC);
+
+  // Crear registro en colección canonRevisiones
+  const revId = Date.now().toString();
+  const registro = {
+    id: revId,
+    contratoId: completandoCanonId,
+    propiedad: c.nombre,
+    inquilino: c.inquilino,
+    fecha,
+    montoAnterior: parseFloat(c.monto),
+    montoNuevo: nuevoMonto ? parseFloat(nuevoMonto) : parseFloat(c.monto),
+    canonCond: c.canonCond || '',
+    canonAjuste: c.canonAjuste || '',
+    obs: obs || null,
+    fechaRegistro: Date.now(),
+  };
+  await setDoc(doc(db, 'canonRevisiones', revId), registro);
+
+  closeModal('modal-completar-canon');
+  notify(`✅ Revisión de canon registrada el ${formatDate(fecha)}`);
 }
 window.toggleCanonRevision = toggleCanonRevision;
+window.confirmarRevisionCanon = confirmarRevisionCanon;
 
 
 document.getElementById('f-vencimiento').addEventListener('change', function() {
@@ -2440,22 +2578,159 @@ document.getElementById('f-vencimiento').addEventListener('change', function() {
   }
 });
 
+// ===================== CANON REVISIONES VIEW =====================
+function filtrarCanonRevisiones(filtro) {
+  canonRevFiltro = filtro;
+  document.querySelectorAll('#canon-rev-filter .db-filter-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['todas','pendiente','realizada'][i] === filtro);
+  });
+  renderCanonRevisiones();
+}
+
+function updateCanonRevBadge() {
+  // Badge = contratos con canonCond activa que NO tienen revisión hecha
+  const pendientes = contratos.filter(c =>
+    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && c.estado !== 'Histórico' && !c.canonRevisionHecha
+  ).length;
+  const el = document.getElementById('sb-canon-rev');
+  if (el) { el.textContent = pendientes; el.style.display = pendientes > 0 ? 'inline-block' : 'none'; }
+}
+
+function renderCanonRevisiones() {
+  const rows = document.getElementById('canon-rev-rows');
+  const empty = document.getElementById('canon-rev-empty');
+  if (!rows) return;
+
+  // Construir lista combinada: contratos con canon + sus registros de revisión
+  // Mostrar contratos con condición de canon (no Histórico), más todos los registros
+  const contratosPendientes = contratos.filter(c =>
+    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && c.estado !== 'Histórico'
+  );
+
+  // Merge: para cada contrato con canon, mostrar su estado; los registros históricos son filas adicionales
+  let items = [];
+
+  // Registros ya realizados (de la colección canonRevisiones)
+  canonRevisiones.forEach(r => {
+    items.push({ tipo: 'registro', ...r });
+  });
+
+  // Contratos pendientes sin revisión hecha que no tienen registro aún
+  contratosPendientes.filter(c => !c.canonRevisionHecha).forEach(c => {
+    // Solo si no ya aparece como pendiente vía registro
+    items.push({
+      tipo: 'pendiente',
+      contratoId: c.id,
+      propiedad: c.nombre,
+      inquilino: c.inquilino,
+      canonCond: c.canonCond || '',
+      canonAjuste: c.canonAjuste || '',
+      canonFecha: c.canonFecha || '',
+      montoActual: c.monto,
+      fecha: null,
+      fechaRegistro: 0,
+    });
+  });
+
+  // Contratos con revisión hecha pero sin registro en la colección (retrocompatibilidad)
+  contratosPendientes.filter(c => c.canonRevisionHecha && !canonRevisiones.find(r => r.contratoId === c.id)).forEach(c => {
+    items.push({
+      tipo: 'registro',
+      contratoId: c.id,
+      propiedad: c.nombre,
+      inquilino: c.inquilino,
+      canonCond: c.canonCond || '',
+      canonAjuste: c.canonAjuste || '',
+      fecha: c.canonFechaRevision || '—',
+      montoAnterior: c.montoAnterior || c.monto,
+      montoNuevo: c.monto,
+      obs: null,
+      fechaRegistro: 1,
+    });
+  });
+
+  // Filtrar según selección
+  if (canonRevFiltro === 'pendiente') items = items.filter(x => x.tipo === 'pendiente');
+  if (canonRevFiltro === 'realizada') items = items.filter(x => x.tipo === 'registro');
+
+  // Ordenar: pendientes primero, luego registros por fecha desc
+  items.sort((a, b) => {
+    if (a.tipo === 'pendiente' && b.tipo !== 'pendiente') return -1;
+    if (a.tipo !== 'pendiente' && b.tipo === 'pendiente') return 1;
+    return (b.fechaRegistro || 0) - (a.fechaRegistro || 0);
+  });
+
+  rows.innerHTML = '';
+  empty.style.display = items.length === 0 ? '' : 'none';
+
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid; grid-template-columns:1fr 130px 110px 110px 80px 90px; align-items:center; padding:0 14px; border-bottom:1px solid var(--border); min-height:48px; gap:10px; font-size:12px; transition:background .1s; cursor:pointer;';
+    row.onmouseenter = () => row.style.background = '#FAFAF8';
+    row.onmouseleave = () => row.style.background = '';
+
+    if (item.tipo === 'pendiente') {
+      const diasEval = item.canonFecha ? diasParaVencer(item.canonFecha) : null;
+      const fechaLabel = item.canonFecha
+        ? `<span style="color:${diasEval !== null && diasEval < 0 ? 'var(--red)' : diasEval !== null && diasEval <= 30 ? 'var(--amber)' : 'var(--text3)'};font-weight:${diasEval !== null && diasEval <= 30 ? '600' : '400'}">${formatDate(item.canonFecha)}</span>`
+        : '<span style="color:var(--text3)">—</span>';
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:500; color:var(--text);">${item.propiedad}</div>
+          <div style="font-size:11px; color:var(--text2);">${item.inquilino}</div>
+        </div>
+        <div><span class="badge purple" style="font-size:9px;">${item.canonCond || '—'}</span></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text3);">${fechaLabel}</div>
+        <div style="font-size:11px; color:var(--text3);">—</div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text3);">${item.canonAjuste || '—'}</div>
+        <div>
+          <span class="badge amber">Pendiente</span>
+        </div>
+      `;
+      row.onclick = () => openDetailPanel(item.contratoId);
+    } else {
+      const cambioMonto = item.montoNuevo !== item.montoAnterior;
+      const signo = item.montoNuevo > item.montoAnterior ? '+' : '';
+      const diff = cambioMonto ? `${signo}$${(item.montoNuevo - item.montoAnterior).toLocaleString('es')}` : 'Sin cambio';
+      const diffColor = cambioMonto ? (item.montoNuevo > item.montoAnterior ? 'color:var(--accent)' : 'color:var(--red)') : 'color:var(--text3)';
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:500; color:var(--text);">${item.propiedad}</div>
+          <div style="font-size:11px; color:var(--text2);">${item.inquilino}${item.obs ? ' · <em style=\'color:var(--text3)\'>' + item.obs + '</em>' : ''}</div>
+        </div>
+        <div><span class="badge gray" style="font-size:9px;">${item.canonCond || '—'}</span></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text3);">${item.canonFecha ? formatDate(item.canonFecha) : '—'}</div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--accent); font-weight:600;">${item.fecha && item.fecha !== '—' ? formatDate(item.fecha) : (item.fecha || '—')}</div>
+        <div style="font-family:var(--mono); font-size:11px; font-weight:600; ${diffColor}">${diff}</div>
+        <div>
+          <span class="badge green">Realizada</span>
+        </div>
+      `;
+      row.onclick = () => openDetailPanel(item.contratoId);
+    }
+    rows.appendChild(row);
+  });
+}
+
+window.filtrarCanonRevisiones = filtrarCanonRevisiones;
+
 // ===================== VIEWS =====================
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   document.getElementById(`view-${name}`).style.display = 'block';
-  const map = { dashboard: 0, contratos: 1, 'por-vencer': 2, renovacion: 3, inspecciones: 4 };
+  const map = { dashboard: 0, contratos: 1, 'por-vencer': 2, renovacion: 3, inspecciones: 4, 'canon-revisiones': 5 };
   document.querySelectorAll('.sidebar-item')[map[name]]?.classList.add('active');
 }
 
 // ===================== EXPORTAR / IMPORTAR =====================
 function exportarDatos() {
   const datos = {
-    version: 3,
+    version: 4,
     exportado: new Date().toISOString(),
     contratos,
     inspecciones,
+    canonRevisiones,
   };
   const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
