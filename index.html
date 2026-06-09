@@ -912,6 +912,28 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     </div>
   </div>
 </div>
+
+<!-- ===== MODAL COMPLETAR INSPECCIÓN ===== -->
+<div class="modal-backdrop" id="modal-completar-insp">
+  <div class="modal" style="width:380px">
+    <div class="modal-title">✅ Completar inspección</div>
+    <div id="completar-insp-info" style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:18px; font-size:13px;"></div>
+    <div class="form-grid full">
+      <div class="field">
+        <label>Fecha en que se realizó *</label>
+        <input type="date" id="ci-fecha">
+      </div>
+      <div class="field">
+        <label>Observaciones</label>
+        <textarea id="ci-obs" placeholder="Ej: Sin novedades, se revisaron instalaciones..." style="min-height:70px"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('modal-completar-insp')">Cancelar</button>
+      <button class="btn primary" onclick="confirmarCompletarInspeccion()">✓ Marcar como completada</button>
+    </div>
+  </div>
+</div>
 </div><!-- /app-layout -->
 
 <script type="module">
@@ -1485,7 +1507,9 @@ function renderTables() {
     const tipoCls = i.tipo === 'Inicial (120 días)' ? 'blue' : i.tipo === 'Pre-vencimiento (1 mes)' ? 'amber' : 'gray';
     const diasF = i.fecha ? diasParaVencer(i.fecha) : null;
     let fechaLabel = '—';
-    if (i.fecha) {
+    if (isCompletada && i.fechaCompletada) {
+      fechaLabel = `<span style="color:var(--accent); font-weight:600;">✓ ${formatDateShort(i.fechaCompletada)}</span>`;
+    } else if (i.fecha) {
       fechaLabel = formatDateShort(i.fecha);
       if (!isCompletada && diasF !== null && diasF <= 7 && diasF >= 0) fechaLabel = `<span style="color:var(--red);font-weight:700;">${fechaLabel}</span>`;
       else if (!isCompletada && diasF !== null && diasF <= 30 && diasF > 0) fechaLabel = `<span style="color:var(--amber);font-weight:600;">${fechaLabel}</span>`;
@@ -2085,18 +2109,44 @@ async function deleteInspeccion(id) {
   notify('🗑 Inspección eliminada');
 }
 
-async function toggleInspeccionCompletada(id) {
+let completandoInspId = null;
+
+function toggleInspeccionCompletada(id) {
   const insp = inspecciones.find(x => x.id === id);
   if (!insp) return;
-  const nuevoEstado = insp.estado === 'Completada' ? 'Pendiente' : 'Completada';
-  const update = { ...insp, estado: nuevoEstado };
-  if (nuevoEstado === 'Completada') {
-    update.fechaCompletada = new Date().toISOString().split('T')[0];
-  } else {
+
+  // Si ya está completada → revertir directamente sin modal
+  if (insp.estado === 'Completada') {
+    const update = { ...insp, estado: 'Pendiente' };
     delete update.fechaCompletada;
+    delete update.obsCompletada;
+    setDoc(doc(db, 'inspecciones', id), update);
+    notify('↩ Inspección marcada como pendiente');
+    return;
   }
-  await setDoc(doc(db, 'inspecciones', id), update);
-  notify(nuevoEstado === 'Completada' ? '✓ Inspección marcada como completada' : '↩ Inspección marcada como pendiente');
+
+  // Si está pendiente → abrir modal para pedir fecha
+  completandoInspId = id;
+  const hoy = new Date().toISOString().split('T')[0];
+  document.getElementById('ci-fecha').value = insp.fecha || hoy;
+  document.getElementById('ci-obs').value = '';
+  document.getElementById('completar-insp-info').innerHTML = `
+    <div style="font-weight:700; font-size:13px; margin-bottom:3px;">🔍 ${insp.propiedad}</div>
+    <div style="color:var(--text2);">👤 ${insp.inquilino}</div>
+    ${insp.tipo ? `<div style="color:var(--text3); font-size:11px; margin-top:3px;">${insp.tipo}${insp.fecha ? ' · Programada: ' + formatDate(insp.fecha) : ''}</div>` : ''}
+  `;
+  document.getElementById('modal-completar-insp').classList.add('open');
+}
+
+async function confirmarCompletarInspeccion() {
+  const fecha = document.getElementById('ci-fecha').value;
+  if (!fecha) { notify('⚠️ Ingresa la fecha de la inspección'); return; }
+  const insp = inspecciones.find(x => x.id === completandoInspId);
+  if (!insp) return;
+  const update = { ...insp, estado: 'Completada', fechaCompletada: fecha, obsCompletada: document.getElementById('ci-obs').value.trim() || null };
+  await setDoc(doc(db, 'inspecciones', completandoInspId), update);
+  closeModal('modal-completar-insp');
+  notify(`✓ Inspección completada el ${formatDate(fecha)}`);
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -2205,6 +2255,7 @@ window.seleccionarContratoPago = seleccionarContratoPago;
 window.onInspeccionContratoChange = onInspeccionContratoChange;
 window.autoFillFechaInspeccion = autoFillFechaInspeccion;
 window.toggleInspeccionCompletada = toggleInspeccionCompletada;
+window.confirmarCompletarInspeccion = confirmarCompletarInspeccion;
 
 </script>
 </body>
