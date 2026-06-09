@@ -1324,10 +1324,18 @@ function updateAlerts() {
     const prox = proxCobroStr(c);
     if (prox) {
       const diasCobro = diasParaVencer(prox);
-      if (diasCobro !== null && diasCobro >= 0 && diasCobro <= 5) {
+      if (diasCobro !== null && diasCobro === 0) {
+        cobros.push({ type: 'purple', icon: '💰', title: `Cobro HOY: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Cobrar hoy ${formatDate(prox)}`],
+          badge: { text: 'HOY', cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
+      } else if (diasCobro !== null && diasCobro > 0 && diasCobro <= 5) {
         cobros.push({ type: 'purple', icon: '💰', title: `Cobro próximo: ${c.nombre}`,
           meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Cobrar el ${formatDate(prox)}`],
-          badge: { text: diasCobro === 0 ? 'HOY' : `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
+          badge: { text: `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
+      } else if (diasCobro !== null && diasCobro > 5 && diasCobro <= 15) {
+        cobros.push({ type: 'amber', icon: '🔔', title: `Cobro en ${diasCobro} días: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Fecha de cobro: ${formatDate(prox)}`],
+          badge: { text: `${diasCobro}d`, cls: 'amber' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
       } else if (diasCobro !== null && diasCobro < 0) {
         cobros.push({ type: 'purple', icon: '⚠️', title: `Cobro pendiente: ${c.nombre}`,
           meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Debió cobrarse el ${formatDate(prox)}`],
