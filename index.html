@@ -1450,21 +1450,7 @@ function updateAlerts() {
   // ── SECCIÓN 1: COBROS ──
   const cobros = [];
   contratos.forEach(c => {
-    const dias = diasParaVencer(c.vencimiento);
-    if (dias !== null && dias <= 30 && dias >= 0 && c.estado !== 'Vencido') {
-      cobros.push({ type: 'red', icon: '🔴', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `⚠️ Vence en ${dias} día${dias !== 1 ? 's' : ''}`],
-        badge: { text: `${dias}d`, cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
-    } else if (dias !== null && dias <= 60 && dias > 30 && c.estado !== 'Vencido') {
-      cobros.push({ type: 'amber', icon: '🟡', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Quedan ~${dias} días`],
-        badge: { text: `${dias}d`, cls: 'amber' }, dias, contractId: c.id, accion: 'detalle' });
-    } else if (dias !== null && dias < 0 && c.estado !== 'Vencido') {
-      cobros.push({ type: 'red', icon: '🔴', title: `VENCIDO: ${c.nombre}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Venció hace ${Math.abs(dias)} días`],
-        badge: { text: 'VENCIDO', cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
-    }
-
+    if (c.estado === 'Histórico') return;
     const prox = proxCobroStr(c);
     if (prox) {
       const diasCobro = diasParaVencer(prox);
@@ -1486,23 +1472,11 @@ function updateAlerts() {
           badge: { text: `${Math.abs(diasCobro)}d atrás`, cls: 'red' }, dias: diasCobro, contractId: c.id, accion: 'pago' });
       }
     }
-
-    contratos.filter(c => c.estado === 'Renovación').forEach(c => {
-      if (!cobros.find(x => x.contractId === c.id && x.type === 'amber' && x.title.startsWith('Renovación'))) {
-        cobros.push({ type: 'amber', icon: '↺', title: `Renovación pendiente: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `En proceso de renovación`],
-          badge: null, dias: 999 });
-      }
-    });
   });
 
   cobros.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
-  // Deduplicate renovacion alerts
-  const cobrosUniq = cobros.filter((a, i, arr) =>
-    !a.title.startsWith('Renovación') || arr.findIndex(x => x.title === a.title) === i
-  );
-  renderAlertCards(cobrosUniq, 'cobros-container');
-  setBadge('badge-cobros', cobrosUniq.length);
+  renderAlertCards(cobros, 'cobros-container');
+  setBadge('badge-cobros', cobros.length);
 
   // ── SECCIÓN 2: INSPECCIONES ──
   const insps = [];
