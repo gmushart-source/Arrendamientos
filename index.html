@@ -146,6 +146,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .badge.red { background: var(--red-bg); color: var(--red); }
 .badge.gray { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
 .badge.purple { background: var(--purple-bg); color: var(--purple); }
+.badge.gray2 { background: #F0EDE8; color: #7A7060; border: 1px solid #CCC8BE; }
 .del-btn { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 14px; opacity: 0; transition: opacity .15s, color .15s; padding: 4px; border-radius: 4px; }
 .db-row:hover .del-btn { opacity: 1; }
 .del-btn:hover { color: var(--red); background: var(--red-bg); }
@@ -414,6 +415,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         </div>
       </div>
 
+      <!-- SECCIÓN 1B: RENOVACIONES -->
+      <div class="alerts-section">
+        <div class="section-title" style="margin-bottom:10px;">
+          🔄 Contratos pendientes por renovación
+          <span id="badge-renovaciones" class="dash-section-badge" style="display:none"></span>
+          <button onclick="showView('por-vencer')" style="margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:600; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid #F0CA80; background:var(--amber-bg); color:var(--amber); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap;">⚡ Ver todos</button>
+        </div>
+        <div id="renovaciones-container">
+          <div class="no-alerts">✅ Sin contratos próximos a vencer.</div>
+        </div>
+      </div>
+
       <!-- SECCIÓN 2: INSPECCIONES -->
       <div class="alerts-section">
         <div class="section-title" style="margin-bottom:10px;">
@@ -632,6 +645,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
             <option value="Por vencer">Por vencer</option>
             <option value="Renovación">Renovación</option>
             <option value="Vencido">Vencido</option>
+            <option value="Histórico">Histórico</option>
           </select>
         </div>
         <div class="field">
@@ -906,6 +920,44 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   </div>
 </div>
 
+<!-- ===== MODAL RENOVAR CONTRATO ===== -->
+<div class="modal-backdrop" id="modal-renovar">
+  <div class="modal" style="width:580px">
+    <div class="modal-title">🔄 Renovar contrato</div>
+    <div id="renovar-contrato-info" style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:18px; font-size:13px;"></div>
+    <p style="font-size:12px; color:var(--text2); margin-bottom:16px; line-height:1.5;">Se creará un <strong>nuevo contrato</strong> con los datos del inmueble. El contrato anterior quedará en estado <span style="color:var(--text3); font-weight:600;">Histórico</span> y no será eliminado.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label>Nueva fecha de inicio *</label>
+        <input type="date" id="ren-inicio">
+      </div>
+      <div class="field">
+        <label>Nueva fecha de vencimiento *</label>
+        <input type="date" id="ren-vencimiento">
+      </div>
+      <div class="field">
+        <label>Nuevo canon mensual (USD) *</label>
+        <input type="number" id="ren-monto" min="0" step="0.01" placeholder="Monto actualizado">
+      </div>
+      <div class="field">
+        <label>Nuevo depósito (USD)</label>
+        <input type="number" id="ren-deposito" min="0" step="0.01" placeholder="Dejar vacío para mantener">
+      </div>
+      <div class="field" style="grid-column:span 2">
+        <label>Observaciones de la renovación</label>
+        <textarea id="ren-obs" placeholder="Ej: Ajuste de canon acordado, nuevas condiciones…" style="min-height:60px"></textarea>
+      </div>
+    </div>
+    <div style="background:var(--amber-bg); border:1px solid #F0CA80; border-radius:var(--radius-sm); padding:10px 14px; margin-top:12px; font-size:12px; color:var(--amber);">
+      ⚠️ El contrato anterior se marcará como <strong>Histórico</strong> y el nuevo quedará como <strong>Activo</strong>. Ambos quedan guardados en Firebase.
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('modal-renovar')">Cancelar</button>
+      <button class="btn primary" onclick="confirmarRenovacion()">🔄 Crear renovación</button>
+    </div>
+  </div>
+</div>
+
 <!-- NOTIFICACIÓN -->
 <div class="notif" id="notif"></div>
 
@@ -1135,6 +1187,7 @@ function badgeClass(estado) {
   if (estado === 'Activo') return 'green';
   if (estado === 'Por vencer') return 'amber';
   if (estado === 'Renovación') return 'red';
+  if (estado === 'Histórico') return 'gray2';
   return 'gray';
 }
 
@@ -1235,6 +1288,7 @@ document.getElementById('f-frecuencia').addEventListener('change', recalcProxCob
 function updateStats() {
   const activos = contratos.filter(c => c.estado === 'Activo').length;
   const vencer = contratos.filter(c => {
+    if (c.estado === 'Histórico') return false;
     const d = diasParaVencer(c.vencimiento);
     return c.estado !== 'Vencido' && d !== null && d >= 0 && d <= 60;
   }).length;
@@ -1474,7 +1528,160 @@ function updateAlerts() {
   canones.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
   renderAlertCards(canones, 'canon-container');
   setBadge('badge-canon', canones.filter(x => !x.revisionHecha).length);
+
+  // ── SECCIÓN RENOVACIONES ──
+  const renovaciones = [];
+  contratos.forEach(c => {
+    // Excluir ya históricos
+    if (c.estado === 'Histórico') return;
+    const dias = diasParaVencer(c.vencimiento);
+    if (dias === null) return;
+    if (dias <= 60 && dias >= 0) {
+      renovaciones.push({
+        type: dias <= 15 ? 'red' : 'amber',
+        icon: '🔄',
+        title: `${c.nombre}`,
+        meta: [`👤 ${c.inquilino}`, `$${parseFloat(c.monto).toLocaleString('es')} · ${c.frecuencia}`, `Vence el ${formatDate(c.vencimiento)}`, dias === 0 ? '⚠️ ¡Vence hoy!' : `Faltan ${dias} día${dias !== 1 ? 's' : ''}`],
+        badge: { text: dias === 0 ? 'HOY' : `${dias}d`, cls: dias <= 15 ? 'red' : 'amber' },
+        dias, contractId: c.id, accion: 'renovar'
+      });
+    } else if (dias < 0) {
+      renovaciones.push({
+        type: 'red',
+        icon: '⚠️',
+        title: `VENCIDO — ${c.nombre}`,
+        meta: [`👤 ${c.inquilino}`, `$${parseFloat(c.monto).toLocaleString('es')} · ${c.frecuencia}`, `Venció el ${formatDate(c.vencimiento)}`, `Hace ${Math.abs(dias)} día${Math.abs(dias) !== 1 ? 's' : ''}`],
+        badge: { text: 'VENCIDO', cls: 'red' },
+        dias, contractId: c.id, accion: 'renovar'
+      });
+    }
+  });
+  renovaciones.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
+  renderRenovacionCards(renovaciones);
+  setBadge('badge-renovaciones', renovaciones.length);
 }
+
+// ===================== RENDER RENOVACIONES =====================
+function renderRenovacionCards(items) {
+  const container = document.getElementById('renovaciones-container');
+  if (!container) return;
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.innerHTML = '<div class="no-alerts">✅ Sin contratos próximos a vencer.</div>';
+    return;
+  }
+  items.forEach(a => {
+    const div = document.createElement('div');
+    div.className = `alert-card ${a.type} clickable`;
+    div.style.cursor = 'default';
+    div.innerHTML = `
+      <div class="alert-icon">${a.icon}</div>
+      <div class="alert-body">
+        <div class="alert-title">${a.title}</div>
+        <div class="alert-meta">${a.meta.map(m => `<span>${m}</span>`).join('')}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; margin-left:auto;">
+        <div class="alert-days ${a.badge.cls}">${a.badge.text}</div>
+        <button class="renov-btn" title="Renovar este contrato" style="font-family:var(--sans); font-size:11px; font-weight:700; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap; transition:all .12s;">🔄 Renovar</button>
+      </div>
+    `;
+    div.querySelector('.renov-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      openRenovarContrato(a.contractId);
+    });
+    div.addEventListener('click', () => openDetailPanel(a.contractId));
+    container.appendChild(div);
+  });
+}
+
+// ===================== MODAL RENOVAR CONTRATO =====================
+let renovandoId = null;
+
+function openRenovarContrato(id) {
+  const c = contratos.find(x => x.id === id);
+  if (!c) return;
+  renovandoId = id;
+
+  // Pre-fill: nuevo inicio = día siguiente al vencimiento, o hoy si ya venció
+  const hoy = new Date().toISOString().split('T')[0];
+  const venc = c.vencimiento;
+  let nuevoInicio = hoy;
+  if (venc) {
+    const d = new Date(venc + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    nuevoInicio = d.toISOString().split('T')[0];
+  }
+  // Nuevo vencimiento: +1 año por defecto
+  const dInicio = new Date(nuevoInicio + 'T00:00:00');
+  const dVenc = new Date(dInicio);
+  dVenc.setFullYear(dVenc.getFullYear() + 1);
+  dVenc.setDate(dVenc.getDate() - 1);
+  const nuevoVenc = dVenc.toISOString().split('T')[0];
+
+  document.getElementById('ren-inicio').value = nuevoInicio;
+  document.getElementById('ren-vencimiento').value = nuevoVenc;
+  document.getElementById('ren-monto').value = c.monto || '';
+  document.getElementById('ren-deposito').value = '';
+  document.getElementById('ren-obs').value = '';
+
+  document.getElementById('renovar-contrato-info').innerHTML = `
+    <div style="font-weight:700; font-size:14px; margin-bottom:4px;">🏠 ${c.nombre}</div>
+    <div style="color:var(--text2); margin-bottom:2px;">👤 ${c.inquilino}</div>
+    <div style="color:var(--text3); font-size:11px; font-family:var(--mono);">
+      Contrato actual: ${formatDate(c.inicio)} → ${formatDate(c.vencimiento)} · $${parseFloat(c.monto).toLocaleString('es')} USD
+    </div>
+  `;
+  document.getElementById('modal-renovar').classList.add('open');
+}
+
+async function confirmarRenovacion() {
+  const nuevoInicio = document.getElementById('ren-inicio').value;
+  const nuevoVenc = document.getElementById('ren-vencimiento').value;
+  const nuevoMonto = document.getElementById('ren-monto').value;
+  if (!nuevoInicio || !nuevoVenc || !nuevoMonto) {
+    notify('⚠️ Completa los campos obligatorios');
+    return;
+  }
+  const c = contratos.find(x => x.id === renovandoId);
+  if (!c) return;
+
+  // 1. Marcar contrato anterior como Histórico
+  const cHistorico = { ...c, estado: 'Histórico', renovadoEn: Date.now(), renovadoPorId: null };
+
+  // 2. Crear nuevo contrato con mismos datos base, fechas y monto actualizados
+  const nuevoId = Date.now().toString();
+  const nuevoDeposito = document.getElementById('ren-deposito').value;
+  const nuevoObs = document.getElementById('ren-obs').value.trim();
+  const diaInicio = new Date(nuevoInicio + 'T00:00:00').getDate();
+  const proxCobro = calcProxCobro(nuevoInicio, c.frecuencia, diaInicio);
+
+  const cNuevo = {
+    ...c,
+    id: nuevoId,
+    estado: 'Activo',
+    inicio: nuevoInicio,
+    vencimiento: nuevoVenc,
+    monto: parseFloat(nuevoMonto),
+    deposito: nuevoDeposito ? parseFloat(nuevoDeposito) : (c.deposito || ''),
+    ultimoPago: '',
+    proxCobro,
+    historialPagos: [],
+    canonRevisionHecha: false,
+    creadoEn: Date.now(),
+    renovadoDesdeId: renovandoId,
+    observaciones: nuevoObs || c.observaciones || '',
+  };
+
+  // 3. Actualizar anterior a histórico y guardar nuevo
+  cHistorico.renovadoPorId = nuevoId;
+  await setDoc(doc(db, 'contratos', renovandoId), cHistorico);
+  await setDoc(doc(db, 'contratos', nuevoId), cNuevo);
+
+  closeModal('modal-renovar');
+  notify(`✅ Contrato renovado — nuevo período: ${formatDate(nuevoInicio)} → ${formatDate(nuevoVenc)}`);
+}
+window.openRenovarContrato = openRenovarContrato;
+window.confirmarRenovacion = confirmarRenovacion;
 
 // ===================== RENDER ROWS =====================
 function makeRow(c, tableId, showDel = true) {
@@ -1511,7 +1718,7 @@ function renderTables() {
 
   const tables = {
     full:   { el: document.getElementById('full-table'),   empty: document.getElementById('full-empty'),   filter: null },
-    vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return d !== null && d <= 60 && c.estado !== 'Vencido'; } },
+    vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return c.estado !== 'Histórico' && d !== null && d <= 60 && c.estado !== 'Vencido'; } },
     renov:  { el: document.getElementById('renov-table'),  empty: document.getElementById('renov-empty'),  filter: c => c.estado === 'Renovación' },
   };
   Object.entries(tables).forEach(([key, t]) => {
