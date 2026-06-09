@@ -214,10 +214,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .detail-actions { display: flex; gap: 8px; margin-top: 20px; }
 
 /* ── INSP TABLE ── */
-.insp-row { display: grid; grid-template-columns: 1fr 110px 110px 110px 36px; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--border); min-height: 42px; gap: 10px; font-size: 12px; transition: background .1s; }
+.insp-row { display: grid; grid-template-columns: 1fr 110px 110px 110px 78px; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--border); min-height: 48px; gap: 10px; font-size: 12px; transition: background .1s; }
 .insp-row.header-row { background: var(--surface2); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); min-height: 34px; font-family: var(--mono); }
 .insp-row:not(.header-row):hover { background: #FAFAF8; }
 .insp-row:last-child { border-bottom: none; }
+.insp-row.completada { opacity: .55; }
+.check-btn { background: none; border: 2px solid var(--border); border-radius: 50%; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: all .15s; color: var(--text3); }
+.check-btn:hover { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+.check-btn.done { border-color: var(--accent); background: var(--accent); color: #fff; }
+.insp-row-actions { display: flex; align-items: center; gap: 6px; }
 
 /* ── EMPTY STATE ── */
 .empty-state { text-align: center; padding: 32px; color: var(--text3); font-size: 13px; }
@@ -533,7 +538,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <button class="add-btn" onclick="openInspeccion()">＋ Nueva inspección</button>
       </div>
       <div class="db-table">
-        <div class="insp-row header-row" style="grid-template-columns: 1fr 110px 110px 110px 36px;">
+        <div class="insp-row header-row" style="grid-template-columns: 1fr 110px 110px 110px 78px;">
           <div>Propiedad / Inquilino</div>
           <div>Tipo</div>
           <div>Fecha programada</div>
@@ -1461,17 +1466,29 @@ function renderTables() {
   const inspEmpty = document.getElementById('insp-empty');
   inspRows.innerHTML = '';
   inspEmpty.style.display = inspecciones.length === 0 ? '' : 'none';
-  inspecciones.forEach(i => {
+  // Ordenar: pendientes primero, completadas al final
+  const sorted = [...inspecciones].sort((a, b) => {
+    const aDone = a.estado === 'Completada' ? 1 : 0;
+    const bDone = b.estado === 'Completada' ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    // Por fecha ascendente
+    if (a.fecha && b.fecha) return a.fecha.localeCompare(b.fecha);
+    if (a.fecha) return -1;
+    if (b.fecha) return 1;
+    return 0;
+  });
+  sorted.forEach(i => {
     const row = document.createElement('div');
-    row.className = 'insp-row';
-    const badgeCls = i.estado === 'Pendiente' ? 'amber' : i.estado === 'Completada' ? 'green' : 'blue';
+    const isCompletada = i.estado === 'Completada';
+    row.className = 'insp-row' + (isCompletada ? ' completada' : '');
+    const badgeCls = isCompletada ? 'green' : i.estado === 'Pendiente' ? 'amber' : 'blue';
     const tipoCls = i.tipo === 'Inicial (120 días)' ? 'blue' : i.tipo === 'Pre-vencimiento (1 mes)' ? 'amber' : 'gray';
     const diasF = i.fecha ? diasParaVencer(i.fecha) : null;
     let fechaLabel = '—';
     if (i.fecha) {
       fechaLabel = formatDateShort(i.fecha);
-      if (diasF !== null && diasF <= 7 && diasF >= 0) fechaLabel = `<span style="color:var(--red);font-weight:700;">${fechaLabel}</span>`;
-      else if (diasF !== null && diasF <= 30 && diasF > 0) fechaLabel = `<span style="color:var(--amber);font-weight:600;">${fechaLabel}</span>`;
+      if (!isCompletada && diasF !== null && diasF <= 7 && diasF >= 0) fechaLabel = `<span style="color:var(--red);font-weight:700;">${fechaLabel}</span>`;
+      else if (!isCompletada && diasF !== null && diasF <= 30 && diasF > 0) fechaLabel = `<span style="color:var(--amber);font-weight:600;">${fechaLabel}</span>`;
     }
     row.innerHTML = `
       <div>
@@ -1481,7 +1498,10 @@ function renderTables() {
       <div><span class="badge ${tipoCls}" style="font-size:9px;">${i.tipo || 'Rutinaria'}</span></div>
       <div class="db-cell-date">${fechaLabel}</div>
       <div><span class="badge ${badgeCls}">${i.estado}</span></div>
-      <button class="del-btn" onclick="deleteInspeccion('${i.id}')" title="Eliminar">✕</button>
+      <div class="insp-row-actions">
+        <button class="check-btn${isCompletada ? ' done' : ''}" onclick="toggleInspeccionCompletada('${i.id}')" title="${isCompletada ? 'Marcar como pendiente' : 'Marcar como completada'}">✓</button>
+        <button class="del-btn" onclick="deleteInspeccion('${i.id}')" title="Eliminar">✕</button>
+      </div>
     `;
     inspRows.appendChild(row);
   });
@@ -2065,6 +2085,20 @@ async function deleteInspeccion(id) {
   notify('🗑 Inspección eliminada');
 }
 
+async function toggleInspeccionCompletada(id) {
+  const insp = inspecciones.find(x => x.id === id);
+  if (!insp) return;
+  const nuevoEstado = insp.estado === 'Completada' ? 'Pendiente' : 'Completada';
+  const update = { ...insp, estado: nuevoEstado };
+  if (nuevoEstado === 'Completada') {
+    update.fechaCompletada = new Date().toISOString().split('T')[0];
+  } else {
+    delete update.fechaCompletada;
+  }
+  await setDoc(doc(db, 'inspecciones', id), update);
+  notify(nuevoEstado === 'Completada' ? '✓ Inspección marcada como completada' : '↩ Inspección marcada como pendiente');
+}
+
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 document.querySelectorAll('.modal-backdrop').forEach(m => {
@@ -2170,6 +2204,7 @@ window.filtrarListaContratos = filtrarListaContratos;
 window.seleccionarContratoPago = seleccionarContratoPago;
 window.onInspeccionContratoChange = onInspeccionContratoChange;
 window.autoFillFechaInspeccion = autoFillFechaInspeccion;
+window.toggleInspeccionCompletada = toggleInspeccionCompletada;
 
 </script>
 </body>
