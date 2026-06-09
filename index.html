@@ -239,6 +239,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .search-bar-clear:hover { background: var(--surface2); color: var(--text); }
 .search-bar-results { font-size: 11px; color: var(--text3); margin-top: -14px; margin-bottom: 10px; font-family: var(--mono); }
 
+/* ── DASH SECTION BADGE ── */
+.dash-section-badge { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; background: var(--red-border); color: #fff; min-width: 20px; text-align: center; }
+
 /* ── ALERTA CLICABLE ── */
 .alert-card { cursor: default; }
 .alert-card.clickable { cursor: pointer; transition: filter .12s, transform .12s; }
@@ -392,10 +395,38 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         </div>
       </div>
 
+      <!-- SECCIÓN 1: COBROS -->
       <div class="alerts-section">
-        <div class="section-title" style="margin-bottom:10px;">🚨 Alertas automáticas <button onclick="abrirBuscarContrato()" style="margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:600; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid #C5DECA; background:var(--accent-light); color:var(--accent); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap;">💰 Registrar pago</button></div>
-        <div id="alerts-container">
-          <div class="no-alerts">Sin alertas activas. Agrega contratos para ver las alertas automáticas.</div>
+        <div class="section-title" style="margin-bottom:10px;">
+          💰 Cobros pendientes
+          <span id="badge-cobros" class="dash-section-badge" style="display:none"></span>
+          <button onclick="abrirBuscarContrato()" style="margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:600; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid #C5DECA; background:var(--accent-light); color:var(--accent); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap;">💰 Registrar pago</button>
+        </div>
+        <div id="cobros-container">
+          <div class="no-alerts">✅ Sin cobros pendientes ni próximos.</div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 2: INSPECCIONES -->
+      <div class="alerts-section">
+        <div class="section-title" style="margin-bottom:10px;">
+          🔍 Inspecciones pendientes
+          <span id="badge-insp" class="dash-section-badge" style="display:none"></span>
+          <button onclick="showView('inspecciones')" style="margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:600; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid #A8C8F0; background:var(--blue-bg); color:var(--blue); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap;">🔍 Ver todas</button>
+        </div>
+        <div id="insp-alerts-container">
+          <div class="no-alerts">✅ Sin inspecciones pendientes.</div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 3: REVISIONES DE CANON -->
+      <div class="alerts-section">
+        <div class="section-title" style="margin-bottom:10px;">
+          📋 Revisiones de canon
+          <span id="badge-canon" class="dash-section-badge" style="display:none"></span>
+        </div>
+        <div id="canon-container">
+          <div class="no-alerts">✅ Sin revisiones de canon próximas.</div>
         </div>
       </div>
 
@@ -1202,98 +1233,12 @@ function updateStats() {
 }
 
 // ===================== ALERTAS =====================
-function updateAlerts() {
-  const container = document.getElementById('alerts-container');
+function renderAlertCards(alerts, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = '';
-  const alerts = [];
-
-  contratos.forEach(c => {
-    const dias = diasParaVencer(c.vencimiento);
-    if (dias !== null && dias <= 30 && dias >= 0 && c.estado !== 'Vencido') {
-      alerts.push({ type: 'red', icon: '🔴', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `⚠️ Vence en ${dias} día${dias !== 1 ? 's' : ''}`],
-        badge: { text: `${dias}d`, cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
-    } else if (dias !== null && dias <= 60 && dias > 30 && c.estado !== 'Vencido') {
-      alerts.push({ type: 'amber', icon: '🟡', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Quedan ~${dias} días`],
-        badge: { text: `${dias}d`, cls: 'amber' }, dias, contractId: c.id, accion: 'detalle' });
-    } else if (dias !== null && dias < 0 && c.estado !== 'Vencido') {
-      alerts.push({ type: 'red', icon: '🔴', title: `VENCIDO: ${c.nombre}`,
-        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Venció hace ${Math.abs(dias)} días`],
-        badge: { text: 'VENCIDO', cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
-    }
-
-    // Alerta de cobro próximo
-    const prox = proxCobroStr(c);
-    if (prox) {
-      const diasCobro = diasParaVencer(prox);
-      if (diasCobro !== null && diasCobro >= 0 && diasCobro <= 5) {
-        alerts.push({ type: 'purple', icon: '💰', title: `Cobro próximo: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Cobrar el ${formatDate(prox)}`],
-          badge: { text: diasCobro === 0 ? 'HOY' : `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
-      } else if (diasCobro !== null && diasCobro < 0) {
-        alerts.push({ type: 'purple', icon: '⚠️', title: `Cobro pendiente: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Debió cobrarse el ${formatDate(prox)}`],
-          badge: { text: `${Math.abs(diasCobro)}d atrás`, cls: 'red' }, dias: diasCobro, contractId: c.id, accion: 'pago' });
-      }
-    }
-
-    // Alerta evaluación de canon
-    if (c.canonFecha && c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
-      const diasCanon = diasParaVencer(c.canonFecha);
-      if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 60) {
-        alerts.push({ type: 'blue', icon: '📋', title: `Revisión de canon: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `Canon actual: $${c.monto}`, `${c.canonCond}${c.canonAjuste ? ' · Ajuste: ' + c.canonAjuste : ''}`, `Fecha: ${formatDate(c.canonFecha)}`],
-          badge: { text: diasCanon === 0 ? 'HOY' : `${diasCanon}d`, cls: 'blue' }, dias: diasCanon + 0.2, contractId: c.id, accion: 'detalle' });
-      } else if (diasCanon !== null && diasCanon < 0) {
-        alerts.push({ type: 'amber', icon: '📋', title: `Canon sin revisar: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}`, `Revisión vencida hace ${Math.abs(diasCanon)} días`],
-          badge: { text: `${Math.abs(diasCanon)}d`, cls: 'amber' }, dias: diasCanon + 0.2, contractId: c.id, accion: 'detalle' });
-      }
-    }
-  });
-
-  contratos.filter(c => c.estado === 'Renovación').forEach(c => {
-    alerts.push({ type: 'amber', icon: '↺', title: `Renovación pendiente: ${c.nombre}`,
-      meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `En proceso de renovación`],
-      badge: null, dias: 999 });
-  });
-
-  // Alertas de inspecciones — con fechas y días
-  inspecciones.forEach(i => {
-    if (i.estado === 'Completada') return;
-    if (i.fecha) {
-      const diasInsp = diasParaVencer(i.fecha);
-      if (diasInsp !== null && diasInsp <= 15 && diasInsp >= 0) {
-        const tipoLabel = i.tipo || 'Inspección';
-        alerts.push({
-          type: diasInsp <= 3 ? 'red' : 'blue',
-          icon: '🔍',
-          title: `${tipoLabel}: ${i.propiedad}`,
-          meta: [`👤 ${i.inquilino}`, `📅 ${formatDate(i.fecha)}`, diasInsp === 0 ? '¡Hoy!' : `Faltan ${diasInsp} día${diasInsp !== 1 ? 's' : ''}`],
-          badge: { text: diasInsp === 0 ? 'HOY' : `${diasInsp}d`, cls: diasInsp <= 3 ? 'red' : 'blue' },
-          dias: diasInsp + 500
-        });
-      } else if (diasInsp !== null && diasInsp < 0) {
-        alerts.push({
-          type: 'amber',
-          icon: '🔍',
-          title: `Inspección vencida: ${i.propiedad}`,
-          meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Inspección'}`, `Debió realizarse el ${formatDate(i.fecha)}`],
-          badge: { text: `${Math.abs(diasInsp)}d atrás`, cls: 'amber' },
-          dias: 800 + diasInsp
-        });
-      }
-    } else {
-      alerts.push({ type: 'blue', icon: '🔵', title: `Inspección pendiente — ${i.propiedad}`,
-        meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Sin tipo'}`, `Sin fecha programada`], badge: null, dias: 1000 });
-    }
-  });
-
-  alerts.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
-
   if (alerts.length === 0) {
-    container.innerHTML = '<div class="no-alerts">✅ Todo en orden — sin alertas activas.</div>';
+    container.innerHTML = '<div class="no-alerts">✅ Sin alertas en esta sección.</div>';
     return;
   }
   alerts.forEach(a => {
@@ -1321,6 +1266,149 @@ function updateAlerts() {
     }
     container.appendChild(div);
   });
+}
+
+function setBadge(id, count) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = count;
+  el.style.display = count > 0 ? 'inline-block' : 'none';
+}
+
+function updateAlerts() {
+  // ── SECCIÓN 1: COBROS ──
+  const cobros = [];
+  contratos.forEach(c => {
+    const dias = diasParaVencer(c.vencimiento);
+    if (dias !== null && dias <= 30 && dias >= 0 && c.estado !== 'Vencido') {
+      cobros.push({ type: 'red', icon: '🔴', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
+        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `⚠️ Vence en ${dias} día${dias !== 1 ? 's' : ''}`],
+        badge: { text: `${dias}d`, cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
+    } else if (dias !== null && dias <= 60 && dias > 30 && c.estado !== 'Vencido') {
+      cobros.push({ type: 'amber', icon: '🟡', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
+        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Quedan ~${dias} días`],
+        badge: { text: `${dias}d`, cls: 'amber' }, dias, contractId: c.id, accion: 'detalle' });
+    } else if (dias !== null && dias < 0 && c.estado !== 'Vencido') {
+      cobros.push({ type: 'red', icon: '🔴', title: `VENCIDO: ${c.nombre}`,
+        meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Venció hace ${Math.abs(dias)} días`],
+        badge: { text: 'VENCIDO', cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
+    }
+
+    const prox = proxCobroStr(c);
+    if (prox) {
+      const diasCobro = diasParaVencer(prox);
+      if (diasCobro !== null && diasCobro >= 0 && diasCobro <= 5) {
+        cobros.push({ type: 'purple', icon: '💰', title: `Cobro próximo: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Cobrar el ${formatDate(prox)}`],
+          badge: { text: diasCobro === 0 ? 'HOY' : `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
+      } else if (diasCobro !== null && diasCobro < 0) {
+        cobros.push({ type: 'purple', icon: '⚠️', title: `Cobro pendiente: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Debió cobrarse el ${formatDate(prox)}`],
+          badge: { text: `${Math.abs(diasCobro)}d atrás`, cls: 'red' }, dias: diasCobro, contractId: c.id, accion: 'pago' });
+      }
+    }
+
+    contratos.filter(c => c.estado === 'Renovación').forEach(c => {
+      if (!cobros.find(x => x.contractId === c.id && x.type === 'amber' && x.title.startsWith('Renovación'))) {
+        cobros.push({ type: 'amber', icon: '↺', title: `Renovación pendiente: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `En proceso de renovación`],
+          badge: null, dias: 999 });
+      }
+    });
+  });
+
+  cobros.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
+  // Deduplicate renovacion alerts
+  const cobrosUniq = cobros.filter((a, i, arr) =>
+    !a.title.startsWith('Renovación') || arr.findIndex(x => x.title === a.title) === i
+  );
+  renderAlertCards(cobrosUniq, 'cobros-container');
+  setBadge('badge-cobros', cobrosUniq.length);
+
+  // ── SECCIÓN 2: INSPECCIONES ──
+  const insps = [];
+  inspecciones.forEach(i => {
+    if (i.estado === 'Completada') return;
+    if (i.fecha) {
+      const diasInsp = diasParaVencer(i.fecha);
+      if (diasInsp !== null && diasInsp <= 15 && diasInsp >= 0) {
+        insps.push({
+          type: diasInsp <= 3 ? 'red' : 'blue',
+          icon: '🔍',
+          title: `${i.tipo || 'Inspección'}: ${i.propiedad}`,
+          meta: [`👤 ${i.inquilino}`, `📅 ${formatDate(i.fecha)}`, diasInsp === 0 ? '¡Hoy!' : `Faltan ${diasInsp} día${diasInsp !== 1 ? 's' : ''}`],
+          badge: { text: diasInsp === 0 ? 'HOY' : `${diasInsp}d`, cls: diasInsp <= 3 ? 'red' : 'blue' },
+          dias: diasInsp
+        });
+      } else if (diasInsp !== null && diasInsp < 0) {
+        insps.push({
+          type: 'amber',
+          icon: '🔍',
+          title: `Inspección vencida: ${i.propiedad}`,
+          meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Inspección'}`, `Debió realizarse el ${formatDate(i.fecha)}`],
+          badge: { text: `${Math.abs(diasInsp)}d atrás`, cls: 'amber' },
+          dias: diasInsp
+        });
+      } else {
+        // Tiene fecha pero está lejos — mostrarla igual como pendiente
+        insps.push({
+          type: 'blue',
+          icon: '🔍',
+          title: `${i.tipo || 'Inspección'}: ${i.propiedad}`,
+          meta: [`👤 ${i.inquilino}`, `📅 ${formatDate(i.fecha)}`, `Faltan ${diasInsp} días`],
+          badge: { text: `${diasInsp}d`, cls: 'blue' },
+          dias: diasInsp
+        });
+      }
+    } else {
+      insps.push({
+        type: 'blue', icon: '🔵',
+        title: `Inspección pendiente: ${i.propiedad}`,
+        meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Sin tipo asignado'}`, `Sin fecha programada`],
+        badge: null, dias: 9999
+      });
+    }
+  });
+  insps.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
+  renderAlertCards(insps, 'insp-alerts-container');
+  setBadge('badge-insp', insps.length);
+
+  // ── SECCIÓN 3: REVISIONES DE CANON ──
+  const canones = [];
+  contratos.forEach(c => {
+    if (c.canonFecha && c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
+      const diasCanon = diasParaVencer(c.canonFecha);
+      if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 60) {
+        canones.push({
+          type: 'blue', icon: '📋',
+          title: `Revisión de canon: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon actual: $${c.monto}`, `${c.canonCond}${c.canonAjuste ? ' · Ajuste: ' + c.canonAjuste : ''}`, `Fecha: ${formatDate(c.canonFecha)}`],
+          badge: { text: diasCanon === 0 ? 'HOY' : `${diasCanon}d`, cls: 'blue' },
+          dias: diasCanon, contractId: c.id, accion: 'detalle'
+        });
+      } else if (diasCanon !== null && diasCanon < 0) {
+        canones.push({
+          type: 'amber', icon: '📋',
+          title: `Canon sin revisar: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}`, `Revisión vencida hace ${Math.abs(diasCanon)} días`],
+          badge: { text: `${Math.abs(diasCanon)}d`, cls: 'amber' },
+          dias: diasCanon, contractId: c.id, accion: 'detalle'
+        });
+      } else if (diasCanon !== null) {
+        // Tiene fecha de revisión futura — mostrarla siempre
+        canones.push({
+          type: 'blue', icon: '📋',
+          title: `Revisión de canon: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}${c.canonAjuste ? ' · ' + c.canonAjuste : ''}`, `Fecha: ${formatDate(c.canonFecha)}`],
+          badge: { text: `${diasCanon}d`, cls: 'blue' },
+          dias: diasCanon, contractId: c.id, accion: 'detalle'
+        });
+      }
+    }
+  });
+  canones.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
+  renderAlertCards(canones, 'canon-container');
+  setBadge('badge-canon', canones.length);
 }
 
 // ===================== RENDER ROWS =====================
