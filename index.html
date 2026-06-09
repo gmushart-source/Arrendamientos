@@ -103,6 +103,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .alert-card.amber { border-left-color: var(--amber-border); background: var(--amber-bg); border-color: #F0CA80; border-left-color: var(--amber-border); }
 .alert-card.blue { border-left-color: var(--blue-border); background: var(--blue-bg); border-color: #A8C8F0; border-left-color: var(--blue-border); }
 .alert-card.purple { border-left-color: var(--purple-border); background: var(--purple-bg); border-color: #C0B8F0; border-left-color: var(--purple-border); }
+.alert-card.green { border-left-color: var(--accent); background: var(--accent-light); border-color: #C5DECA; border-left-color: var(--accent); }
 .alert-icon { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
 .alert-body { flex: 1; }
 .alert-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
@@ -112,6 +113,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .alert-badge.amber { background: var(--amber-bg); color: var(--amber); border: 1px solid #F0CA80; }
 .alert-badge.blue { background: var(--blue-bg); color: var(--blue); border: 1px solid #A8C8F0; }
 .alert-badge.purple { background: var(--purple-bg); color: var(--purple); border: 1px solid #C0B8F0; }
+.alert-badge.green { background: var(--accent-light); color: var(--accent); border: 1px solid #C5DECA; }
 .alert-days { margin-left: auto; font-family: var(--mono); font-size: 11px; font-weight: 600; flex-shrink: 0; }
 .alert-days.red { color: var(--red); }
 .alert-days.amber { color: var(--amber); }
@@ -775,6 +777,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <label>Observaciones adicionales</label>
           <textarea id="f-observaciones" placeholder="Cualquier nota relevante sobre el contrato..."></textarea>
         </div>
+        <div class="field" style="background:var(--accent-light); border:1px solid #C5DECA; border-radius:var(--radius-sm); padding:10px 14px; margin-top:4px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:13px; font-weight:600; color:var(--accent); margin-bottom:0;">
+            <input type="checkbox" id="f-canon-revision-hecha" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
+            <span>✅ Revisión de canon realizada</span>
+          </label>
+          <span style="font-size:10px; color:var(--text2); margin-top:4px; display:block;">Marca cuando ya hayas completado la revisión y ajuste del canon para este período.</span>
+        </div>
       </div>
     </div>
 
@@ -1272,14 +1281,17 @@ function renderAlertCards(alerts, containerId) {
     const div = document.createElement('div');
     div.className = `alert-card ${a.type}${a.contractId ? ' clickable' : ''}`;
     const esAccionPago = a.accion === 'pago';
+    const esCanon = containerId === 'canon-container' && a.contractId;
+    if (a.revisionHecha) div.style.opacity = '0.65';
     div.innerHTML = `
       <div class="alert-icon">${a.icon}</div>
       <div class="alert-body">
         <div class="alert-title">${a.title}</div>
         <div class="alert-meta">${a.meta.map(m => `<span>${m}</span>`).join('')}</div>
       </div>
-      ${a.badge && !esAccionPago ? `<div class="alert-days ${a.badge.cls}">${a.badge.text}</div>` : ''}
+      ${a.badge && !esAccionPago && !esCanon ? `<div class="alert-days ${a.badge.cls}">${a.badge.text}</div>` : ''}
       ${esAccionPago && a.contractId ? `<button class="alert-pay-btn" data-cid="${a.contractId}">💰 Pagar</button>` : ''}
+      ${esCanon ? `<button class="check-btn${a.revisionHecha ? ' done' : ''}" title="${a.revisionHecha ? 'Desmarcar revisión' : 'Marcar revisión como realizada'}" style="flex-shrink:0; margin-left:auto;">✓</button>` : ''}
     `;
     if (a.contractId) {
       if (esAccionPago) {
@@ -1287,6 +1299,12 @@ function renderAlertCards(alerts, containerId) {
           e.stopPropagation();
           openRegistrarPago(a.contractId);
         });
+      } else if (esCanon) {
+        div.querySelector('.check-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          toggleCanonRevision(a.contractId);
+        });
+        div.addEventListener('click', () => openDetailPanel(a.contractId));
       } else {
         div.addEventListener('click', () => openDetailPanel(a.contractId));
       }
@@ -1411,7 +1429,19 @@ function updateAlerts() {
   // ── SECCIÓN 3: REVISIONES DE CANON ──
   const canones = [];
   contratos.forEach(c => {
-    if (c.canonFecha && c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
+    if (c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
+      if (c.canonRevisionHecha) {
+        // Mostrar como completada (atenuada, con opción de desmarcar)
+        canones.push({
+          type: 'green', icon: '✅',
+          title: `Canon revisado: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}`, `Revisión completada`],
+          badge: { text: 'LISTO', cls: 'green' },
+          dias: 99999, contractId: c.id, accion: 'detalle', revisionHecha: true
+        });
+        return;
+      }
+      if (!c.canonFecha) return; // sin fecha no mostramos
       const diasCanon = diasParaVencer(c.canonFecha);
       if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 60) {
         canones.push({
@@ -1443,7 +1473,7 @@ function updateAlerts() {
   });
   canones.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
   renderAlertCards(canones, 'canon-container');
-  setBadge('badge-canon', canones.length);
+  setBadge('badge-canon', canones.filter(x => !x.revisionHecha).length);
 }
 
 // ===================== RENDER ROWS =====================
@@ -1720,15 +1750,31 @@ function openDetailPanel(id) {
       ${c.canonDesc ? `<div class="detail-row"><span class="detail-label">Detalle</span><span class="detail-val">${c.canonDesc}</span></div>` : ''}
       <div class="detail-row"><span class="detail-label">Ajuste estimado</span><span class="detail-val">${c.canonAjuste || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Fecha evaluación</span><span class="detail-val">${formatDate(c.canonFecha)}</span></div>
+      <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? '<span style="color:var(--accent);font-weight:700;">✅ Sí, completada</span>' : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
       ${c.observaciones ? `<div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-val">${c.observaciones}</span></div>` : ''}
     </div>
 
     <div class="detail-actions" style="flex-direction:column; gap:10px;">
-      <button class="btn primary" onclick="openRegistrarPago('${c.id}')" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:14px; padding:10px 18px;">💰 Registrar pago</button>
-      <button class="btn secondary" onclick="closeDetailPanel(); setTimeout(()=>editContrato('${c.id}'),120);" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:13px; padding:9px 18px; border-color:var(--accent); color:var(--accent);">✏️ Editar contrato</button>
+      <button class="btn primary" data-action="pago" data-id="${c.id}" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:14px; padding:10px 18px;">💰 Registrar pago</button>
+      <button class="btn secondary" data-action="editar" data-id="${c.id}" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:13px; padding:9px 18px; border-color:var(--accent); color:var(--accent);">✏️ Editar contrato</button>
     </div>
   `;
   document.getElementById('detail-backdrop').classList.add('open');
+
+  // Event delegation para botones del panel de detalle
+  const detailContent = document.getElementById('detail-content');
+  detailContent.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'pago') {
+        openRegistrarPago(id);
+      } else if (action === 'editar') {
+        closeDetailPanel();
+        setTimeout(() => editContrato(id), 150);
+      }
+    });
+  });
 }
 
 function closeDetailPanel() {
@@ -1748,6 +1794,7 @@ function clearForm() {
    'f-pagador','f-pagador-tel','f-pagador-rel',
    'f-cuenta','f-monto-cobro','f-canon-fecha','f-canon-ajuste','f-canon-desc','f-observaciones'
   ].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.getElementById('f-canon-revision-hecha').checked = false;
   document.getElementById('f-estado').value = 'Activo';
   document.getElementById('f-frecuencia').value = 'Mensual';
   document.getElementById('f-inq-tipo').value = 'Natural';
@@ -1816,6 +1863,7 @@ function editContrato(id) {
   document.getElementById('f-canon-fecha').value = c.canonFecha || '';
   document.getElementById('f-canon-ajuste').value = c.canonAjuste || '';
   document.getElementById('f-observaciones').value = c.observaciones || '';
+  document.getElementById('f-canon-revision-hecha').checked = c.canonRevisionHecha || false;
   toggleCanonCond();
   switchTab(0);
   document.getElementById('modal-contrato').classList.add('open');
@@ -1876,6 +1924,7 @@ async function saveContrato() {
     canonFecha: document.getElementById('f-canon-fecha').value,
     canonAjuste: document.getElementById('f-canon-ajuste').value.trim(),
     observaciones: document.getElementById('f-observaciones').value.trim(),
+    canonRevisionHecha: document.getElementById('f-canon-revision-hecha').checked,
   };
 
   if (editingId) {
@@ -2163,7 +2212,17 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
 
-// Auto-estado por vencimiento
+// ===================== TOGGLE CANON REVISION =====================
+async function toggleCanonRevision(contractId) {
+  const c = contratos.find(x => x.id === contractId);
+  if (!c) return;
+  const nuevoValor = !c.canonRevisionHecha;
+  await setDoc(doc(db, 'contratos', contractId), { ...c, canonRevisionHecha: nuevoValor });
+  notify(nuevoValor ? '✅ Revisión de canon marcada como realizada' : '↩ Revisión de canon desmarcada');
+}
+window.toggleCanonRevision = toggleCanonRevision;
+
+
 document.getElementById('f-vencimiento').addEventListener('change', function() {
   const dias = diasParaVencer(this.value);
   if (dias !== null) {
