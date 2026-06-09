@@ -230,6 +230,35 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 /* Condicional */
 .cond-warning { background: var(--amber-bg); border: 1px solid #F0CA80; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 11px; color: var(--amber); display: none; margin-top: 6px; }
 
+/* ── BUSCADOR DASHBOARD ── */
+.search-bar-wrap { position: relative; margin-bottom: 20px; }
+.search-bar { width: 100%; font-family: var(--sans); font-size: 14px; padding: 10px 14px 10px 38px; border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s; }
+.search-bar:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(31,78,61,.1); }
+.search-bar-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; opacity: .5; }
+.search-bar-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 13px; color: var(--text3); display: none; padding: 2px 6px; border-radius: 4px; }
+.search-bar-clear:hover { background: var(--surface2); color: var(--text); }
+.search-bar-results { font-size: 11px; color: var(--text3); margin-top: -14px; margin-bottom: 10px; font-family: var(--mono); }
+
+/* ── ALERTA CLICABLE ── */
+.alert-card { cursor: default; }
+.alert-card.clickable { cursor: pointer; transition: filter .12s, transform .12s; }
+.alert-card.clickable:hover { filter: brightness(.97); transform: translateX(2px); }
+.alert-pay-btn { margin-left: auto; flex-shrink: 0; font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: var(--radius-sm); border: 1px solid; cursor: pointer; transition: all .12s; white-space: nowrap; background: var(--surface); color: var(--accent); border-color: #C5DECA; }
+.alert-pay-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── MODAL BUSCAR CONTRATO ── */
+.search-contract-input { width: 100%; font-family: var(--sans); font-size: 14px; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); outline: none; transition: border-color .15s; margin-bottom: 12px; }
+.search-contract-input:focus { border-color: var(--accent); }
+.contract-pick-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.contract-pick-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+.contract-pick-item:last-child { border-bottom: none; }
+.contract-pick-item:hover { background: var(--accent-light); }
+.contract-pick-item:hover .cpick-name { color: var(--accent); }
+.cpick-icon { font-size: 18px; flex-shrink: 0; }
+.cpick-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.cpick-sub { font-size: 11px; color: var(--text2); margin-top: 1px; }
+.cpick-badge { margin-left: auto; flex-shrink: 0; }
+
 @media (max-width: 700px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; display: flex; overflow-x: auto; gap: 4px; padding: 12px; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border); }
@@ -364,14 +393,23 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       </div>
 
       <div class="alerts-section">
-        <div class="section-title">🚨 Alertas automáticas</div>
+        <div class="section-title" style="margin-bottom:10px;">🚨 Alertas automáticas <button onclick="abrirBuscarContrato()" style="margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:600; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid #C5DECA; background:var(--accent-light); color:var(--accent); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap;">💰 Registrar pago</button></div>
         <div id="alerts-container">
           <div class="no-alerts">Sin alertas activas. Agrega contratos para ver las alertas automáticas.</div>
         </div>
       </div>
 
       <div class="db-section">
-        <div class="section-title">📄 Contratos recientes</div>
+        <div class="section-title" style="margin-bottom:14px;">📄 Contratos recientes</div>
+
+        <!-- BUSCADOR -->
+        <div class="search-bar-wrap">
+          <span class="search-bar-icon">🔍</span>
+          <input type="text" class="search-bar" id="dash-search" placeholder="Buscar por propiedad, inquilino, estado…" oninput="filtrarDashboard(this.value)">
+          <button class="search-bar-clear" id="dash-search-clear" onclick="limpiarBusqueda()">✕</button>
+        </div>
+        <div class="search-bar-results" id="dash-search-results" style="display:none"></div>
+
         <div class="db-table" id="dash-table">
           <div class="db-row header-row">
             <div>Propiedad / Contrato</div>
@@ -795,6 +833,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <!-- NOTIFICACIÓN -->
 <div class="notif" id="notif"></div>
+
+<!-- ===== MODAL BUSCAR CONTRATO PARA PAGAR ===== -->
+<div class="modal-backdrop" id="modal-buscar-contrato">
+  <div class="modal" style="width:500px">
+    <div class="modal-title">💰 Registrar pago — Seleccionar contrato</div>
+    <p style="font-size:12px; color:var(--text2); margin-bottom:14px;">Busca la propiedad o inquilino y selecciona el contrato al que deseas registrar el pago.</p>
+    <input type="text" class="search-contract-input" id="buscar-contrato-input" placeholder="🔍  Buscar propiedad, inquilino…" oninput="filtrarListaContratos(this.value)">
+    <div class="contract-pick-list" id="contract-pick-list"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn secondary" onclick="closeModal('modal-buscar-contrato')">Cancelar</button>
+    </div>
+  </div>
+</div>
 </div><!-- /app-layout -->
 
 <script type="module">
@@ -1131,15 +1182,15 @@ function updateAlerts() {
     if (dias !== null && dias <= 30 && dias >= 0 && c.estado !== 'Vencido') {
       alerts.push({ type: 'red', icon: '🔴', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
         meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `⚠️ Vence en ${dias} día${dias !== 1 ? 's' : ''}`],
-        badge: { text: `${dias}d`, cls: 'red' }, dias });
+        badge: { text: `${dias}d`, cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
     } else if (dias !== null && dias <= 60 && dias > 30 && c.estado !== 'Vencido') {
       alerts.push({ type: 'amber', icon: '🟡', title: `${c.nombre} — vence ${formatDate(c.vencimiento)}`,
         meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Quedan ~${dias} días`],
-        badge: { text: `${dias}d`, cls: 'amber' }, dias });
+        badge: { text: `${dias}d`, cls: 'amber' }, dias, contractId: c.id, accion: 'detalle' });
     } else if (dias !== null && dias < 0 && c.estado !== 'Vencido') {
       alerts.push({ type: 'red', icon: '🔴', title: `VENCIDO: ${c.nombre}`,
         meta: [`👤 ${c.inquilino}`, `$${c.monto}/${c.frecuencia.toLowerCase()}`, `Venció hace ${Math.abs(dias)} días`],
-        badge: { text: 'VENCIDO', cls: 'red' }, dias });
+        badge: { text: 'VENCIDO', cls: 'red' }, dias, contractId: c.id, accion: 'detalle' });
     }
 
     // Alerta de cobro próximo
@@ -1149,11 +1200,11 @@ function updateAlerts() {
       if (diasCobro !== null && diasCobro >= 0 && diasCobro <= 5) {
         alerts.push({ type: 'purple', icon: '💰', title: `Cobro próximo: ${c.nombre}`,
           meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Cobrar el ${formatDate(prox)}`],
-          badge: { text: diasCobro === 0 ? 'HOY' : `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1 });
+          badge: { text: diasCobro === 0 ? 'HOY' : `en ${diasCobro}d`, cls: 'purple' }, dias: diasCobro + 0.1, contractId: c.id, accion: 'pago' });
       } else if (diasCobro !== null && diasCobro < 0) {
         alerts.push({ type: 'purple', icon: '⚠️', title: `Cobro pendiente: ${c.nombre}`,
           meta: [`👤 ${c.inquilino}`, `$${c.monto} · ${c.frecuencia.toLowerCase()}`, `Debió cobrarse el ${formatDate(prox)}`],
-          badge: { text: `${Math.abs(diasCobro)}d atrás`, cls: 'red' }, dias: diasCobro });
+          badge: { text: `${Math.abs(diasCobro)}d atrás`, cls: 'red' }, dias: diasCobro, contractId: c.id, accion: 'pago' });
       }
     }
 
@@ -1163,7 +1214,7 @@ function updateAlerts() {
       if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 30) {
         alerts.push({ type: 'blue', icon: '📋', title: `Evaluar canon: ${c.nombre}`,
           meta: [`👤 ${c.inquilino}`, `Canon actual: $${c.monto}`, `Evaluación: ${formatDate(c.canonFecha)}`],
-          badge: { text: diasCanon === 0 ? 'HOY' : `${diasCanon}d`, cls: 'blue' }, dias: diasCanon + 0.2 });
+          badge: { text: diasCanon === 0 ? 'HOY' : `${diasCanon}d`, cls: 'blue' }, dias: diasCanon + 0.2, contractId: c.id, accion: 'detalle' });
       }
     }
   });
@@ -1187,15 +1238,27 @@ function updateAlerts() {
   }
   alerts.forEach(a => {
     const div = document.createElement('div');
-    div.className = `alert-card ${a.type}`;
+    div.className = `alert-card ${a.type}${a.contractId ? ' clickable' : ''}`;
+    const esAccionPago = a.accion === 'pago';
     div.innerHTML = `
       <div class="alert-icon">${a.icon}</div>
       <div class="alert-body">
         <div class="alert-title">${a.title}</div>
         <div class="alert-meta">${a.meta.map(m => `<span>${m}</span>`).join('')}</div>
       </div>
-      ${a.badge ? `<div class="alert-days ${a.badge.cls}">${a.badge.text}</div>` : ''}
+      ${a.badge && !esAccionPago ? `<div class="alert-days ${a.badge.cls}">${a.badge.text}</div>` : ''}
+      ${esAccionPago && a.contractId ? `<button class="alert-pay-btn" data-cid="${a.contractId}">💰 Pagar</button>` : ''}
     `;
+    if (a.contractId) {
+      if (esAccionPago) {
+        div.querySelector('.alert-pay-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          openRegistrarPago(a.contractId);
+        });
+      } else {
+        div.addEventListener('click', () => openDetailPanel(a.contractId));
+      }
+    }
     container.appendChild(div);
   });
 }
@@ -1230,8 +1293,10 @@ function makeRow(c, tableId, showDel = true) {
 }
 
 function renderTables() {
+  // Dashboard usa su propio render con búsqueda
+  renderDashTable();
+
   const tables = {
-    dash:   { el: document.getElementById('dash-table'),   empty: document.getElementById('dash-empty'),   filter: null },
     full:   { el: document.getElementById('full-table'),   empty: document.getElementById('full-empty'),   filter: null },
     vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return d !== null && d <= 60 && c.estado !== 'Vencido'; } },
     renov:  { el: document.getElementById('renov-table'),  empty: document.getElementById('renov-empty'),  filter: c => c.estado === 'Renovación' },
@@ -1263,6 +1328,95 @@ function renderTables() {
 }
 
 function refresh() { updateStats(); updateAlerts(); renderTables(); }
+
+// ===================== BÚSQUEDA DASHBOARD =====================
+let dashSearchQuery = '';
+
+function filtrarDashboard(q) {
+  dashSearchQuery = q.trim().toLowerCase();
+  const clearBtn = document.getElementById('dash-search-clear');
+  const resultsEl = document.getElementById('dash-search-results');
+  clearBtn.style.display = dashSearchQuery ? 'block' : 'none';
+  renderDashTable();
+  if (dashSearchQuery) {
+    const total = contratos.filter(c => matchesSearch(c, dashSearchQuery)).length;
+    resultsEl.style.display = 'block';
+    resultsEl.textContent = total === 0 ? 'Sin resultados para "' + q.trim() + '"'
+      : `${total} contrato${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
+  } else {
+    resultsEl.style.display = 'none';
+  }
+}
+
+function limpiarBusqueda() {
+  dashSearchQuery = '';
+  document.getElementById('dash-search').value = '';
+  document.getElementById('dash-search-clear').style.display = 'none';
+  document.getElementById('dash-search-results').style.display = 'none';
+  renderDashTable();
+}
+
+function matchesSearch(c, q) {
+  return (c.nombre || '').toLowerCase().includes(q)
+    || (c.inquilino || '').toLowerCase().includes(q)
+    || (c.estado || '').toLowerCase().includes(q)
+    || (c.direccion || '').toLowerCase().includes(q)
+    || (c.inqDoc || '').toLowerCase().includes(q);
+}
+
+function renderDashTable() {
+  const table = document.getElementById('dash-table');
+  const empty = document.getElementById('dash-empty');
+  [...table.children].forEach(ch => { if (!ch.classList.contains('header-row') && !ch.classList.contains('empty-state')) ch.remove(); });
+  const filtered = dashSearchQuery
+    ? contratos.filter(c => matchesSearch(c, dashSearchQuery))
+    : contratos.slice(0, 8);
+  empty.style.display = filtered.length === 0 ? '' : 'none';
+  if (dashSearchQuery && filtered.length === 0) {
+    empty.querySelector('div:last-child').innerHTML = `No se encontraron contratos para <strong>"${document.getElementById('dash-search').value.trim()}"</strong>`;
+  } else {
+    empty.querySelector('div:last-child').innerHTML = 'No hay contratos aún.<br>Haz clic en <strong>+ Nuevo contrato</strong> para comenzar.';
+  }
+  filtered.forEach(c => table.insertBefore(makeRow(c, 'dash'), empty));
+}
+
+// ===================== MODAL BUSCAR CONTRATO =====================
+function abrirBuscarContrato() {
+  document.getElementById('buscar-contrato-input').value = '';
+  renderListaContratos('');
+  document.getElementById('modal-buscar-contrato').classList.add('open');
+  setTimeout(() => document.getElementById('buscar-contrato-input').focus(), 120);
+}
+
+function filtrarListaContratos(q) {
+  renderListaContratos(q.trim().toLowerCase());
+}
+
+function renderListaContratos(q) {
+  const list = document.getElementById('contract-pick-list');
+  const items = q ? contratos.filter(c => matchesSearch(c, q)) : contratos;
+  if (items.length === 0) {
+    list.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text3); font-size:13px;">${q ? 'Sin resultados para "' + q + '"' : 'No hay contratos registrados'}</div>`;
+    return;
+  }
+  list.innerHTML = items.map(c => {
+    const prox = proxCobroStr(c);
+    const chip = prox ? cobroChip(c) : '—';
+    return `<div class="contract-pick-item" onclick="seleccionarContratoPago('${c.id}')">
+      <div class="cpick-icon">🏠</div>
+      <div style="flex:1; min-width:0;">
+        <div class="cpick-name">${c.nombre}</div>
+        <div class="cpick-sub">👤 ${c.inquilino} · $${parseFloat(c.monto).toLocaleString('es')} · ${c.frecuencia}</div>
+      </div>
+      <div class="cpick-badge">${chip}</div>
+    </div>`;
+  }).join('');
+}
+
+function seleccionarContratoPago(id) {
+  closeModal('modal-buscar-contrato');
+  setTimeout(() => openRegistrarPago(id), 150);
+}
 
 // ===================== DETAIL PANEL =====================
 function openDetailPanel(id) {
@@ -1731,6 +1885,11 @@ window.togglePassVis = togglePassVis;
 window.olvidarContrasena = olvidarContrasena;
 window.toggleInqJuridico = toggleInqJuridico;
 window.toggleCanonCond = toggleCanonCond;
+window.filtrarDashboard = filtrarDashboard;
+window.limpiarBusqueda = limpiarBusqueda;
+window.abrirBuscarContrato = abrirBuscarContrato;
+window.filtrarListaContratos = filtrarListaContratos;
+window.seleccionarContratoPago = seleccionarContratoPago;
 
 </script>
 </body>
