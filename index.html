@@ -214,7 +214,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .detail-actions { display: flex; gap: 8px; margin-top: 20px; }
 
 /* ── INSP TABLE ── */
-.insp-row { display: grid; grid-template-columns: 1fr 120px 130px 36px; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--border); min-height: 42px; gap: 10px; font-size: 12px; transition: background .1s; }
+.insp-row { display: grid; grid-template-columns: 1fr 110px 110px 110px 36px; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--border); min-height: 42px; gap: 10px; font-size: 12px; transition: background .1s; }
 .insp-row.header-row { background: var(--surface2); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); min-height: 34px; font-family: var(--mono); }
 .insp-row:not(.header-row):hover { background: #FAFAF8; }
 .insp-row:last-child { border-bottom: none; }
@@ -502,10 +502,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <button class="add-btn" onclick="openInspeccion()">＋ Nueva inspección</button>
       </div>
       <div class="db-table">
-        <div class="insp-row header-row">
-          <div>Propiedad</div>
+        <div class="insp-row header-row" style="grid-template-columns: 1fr 110px 110px 110px 36px;">
+          <div>Propiedad / Inquilino</div>
+          <div>Tipo</div>
+          <div>Fecha programada</div>
           <div>Estado</div>
-          <div>Inquilino</div>
           <div></div>
         </div>
         <div id="insp-rows"></div>
@@ -750,12 +751,37 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <!-- ===== MODAL NUEVA INSPECCIÓN ===== -->
 <div class="modal-backdrop" id="modal-inspeccion">
-  <div class="modal" style="width:420px">
+  <div class="modal" style="width:480px">
     <div class="modal-title">🔍 Nueva inspección</div>
     <div class="form-grid full">
       <div class="field">
+        <label>Vincular a contrato <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">(opcional — genera fechas automáticas)</span></label>
+        <select id="i-contrato" onchange="onInspeccionContratoChange()">
+          <option value="">— Sin vincular a contrato —</option>
+        </select>
+      </div>
+      <div id="i-fechas-auto-info" style="display:none; background:var(--accent-light); border:1px solid #C5DECA; border-radius:var(--radius-sm); padding:10px 14px; font-size:12px; color:var(--accent);">
+        <div style="font-weight:700; margin-bottom:6px;">📅 Fechas automáticas calculadas</div>
+        <div id="i-fecha-120-label" style="margin-bottom:3px;"></div>
+        <div id="i-fecha-mes-label"></div>
+      </div>
+      <div class="field">
+        <label>Tipo de inspección</label>
+        <select id="i-tipo" onchange="autoFillFechaInspeccion()">
+          <option value="Inicial (120 días)">Inicial — 120 días desde inicio</option>
+          <option value="Pre-vencimiento (1 mes)">Pre-vencimiento — 1 mes antes</option>
+          <option value="Rutinaria">Rutinaria</option>
+          <option value="Extraordinaria">Extraordinaria</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Fecha programada</label>
+        <input type="date" id="i-fecha">
+        <span class="hint">Se completa automáticamente según el tipo si hay contrato vinculado</span>
+      </div>
+      <div class="field">
         <label>Propiedad</label>
-        <input type="text" id="i-propiedad" placeholder="Ej: Galpón 1 Altos de Castillito">
+        <input type="text" id="i-propiedad" placeholder="Ej: Apto. Aqualina 3-3">
       </div>
       <div class="field">
         <label>Inquilino</label>
@@ -768,6 +794,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <option value="Programada">Programada</option>
           <option value="Completada">Completada</option>
         </select>
+      </div>
+      <div class="field">
+        <label>Observaciones</label>
+        <textarea id="i-obs" placeholder="Notas sobre la inspección..." style="min-height:60px"></textarea>
       </div>
     </div>
     <div class="modal-actions">
@@ -1209,12 +1239,16 @@ function updateAlerts() {
     }
 
     // Alerta evaluación de canon
-    if (c.canonFecha) {
+    if (c.canonFecha && c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
       const diasCanon = diasParaVencer(c.canonFecha);
-      if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 30) {
-        alerts.push({ type: 'blue', icon: '📋', title: `Evaluar canon: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `Canon actual: $${c.monto}`, `Evaluación: ${formatDate(c.canonFecha)}`],
+      if (diasCanon !== null && diasCanon >= 0 && diasCanon <= 60) {
+        alerts.push({ type: 'blue', icon: '📋', title: `Revisión de canon: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon actual: $${c.monto}`, `${c.canonCond}${c.canonAjuste ? ' · Ajuste: ' + c.canonAjuste : ''}`, `Fecha: ${formatDate(c.canonFecha)}`],
           badge: { text: diasCanon === 0 ? 'HOY' : `${diasCanon}d`, cls: 'blue' }, dias: diasCanon + 0.2, contractId: c.id, accion: 'detalle' });
+      } else if (diasCanon !== null && diasCanon < 0) {
+        alerts.push({ type: 'amber', icon: '📋', title: `Canon sin revisar: ${c.nombre}`,
+          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}`, `Revisión vencida hace ${Math.abs(diasCanon)} días`],
+          badge: { text: `${Math.abs(diasCanon)}d`, cls: 'amber' }, dias: diasCanon + 0.2, contractId: c.id, accion: 'detalle' });
       }
     }
   });
@@ -1225,9 +1259,35 @@ function updateAlerts() {
       badge: null, dias: 999 });
   });
 
-  inspecciones.filter(i => i.estado === 'Pendiente').forEach(i => {
-    alerts.push({ type: 'blue', icon: '🔵', title: `Inspección pendiente — ${i.propiedad}`,
-      meta: [`👤 ${i.inquilino}`, `Sin fecha programada`], badge: null, dias: 1000 });
+  // Alertas de inspecciones — con fechas y días
+  inspecciones.forEach(i => {
+    if (i.estado === 'Completada') return;
+    if (i.fecha) {
+      const diasInsp = diasParaVencer(i.fecha);
+      if (diasInsp !== null && diasInsp <= 15 && diasInsp >= 0) {
+        const tipoLabel = i.tipo || 'Inspección';
+        alerts.push({
+          type: diasInsp <= 3 ? 'red' : 'blue',
+          icon: '🔍',
+          title: `${tipoLabel}: ${i.propiedad}`,
+          meta: [`👤 ${i.inquilino}`, `📅 ${formatDate(i.fecha)}`, diasInsp === 0 ? '¡Hoy!' : `Faltan ${diasInsp} día${diasInsp !== 1 ? 's' : ''}`],
+          badge: { text: diasInsp === 0 ? 'HOY' : `${diasInsp}d`, cls: diasInsp <= 3 ? 'red' : 'blue' },
+          dias: diasInsp + 500
+        });
+      } else if (diasInsp !== null && diasInsp < 0) {
+        alerts.push({
+          type: 'amber',
+          icon: '🔍',
+          title: `Inspección vencida: ${i.propiedad}`,
+          meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Inspección'}`, `Debió realizarse el ${formatDate(i.fecha)}`],
+          badge: { text: `${Math.abs(diasInsp)}d atrás`, cls: 'amber' },
+          dias: 800 + diasInsp
+        });
+      }
+    } else {
+      alerts.push({ type: 'blue', icon: '🔵', title: `Inspección pendiente — ${i.propiedad}`,
+        meta: [`👤 ${i.inquilino}`, `${i.tipo || 'Sin tipo'}`, `Sin fecha programada`], badge: null, dias: 1000 });
+    }
   });
 
   alerts.sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
@@ -1316,11 +1376,23 @@ function renderTables() {
   inspecciones.forEach(i => {
     const row = document.createElement('div');
     row.className = 'insp-row';
-    const badgeCls = i.estado === 'Pendiente' ? 'amber' : i.estado === 'Completada' ? 'green' : 'gray';
+    const badgeCls = i.estado === 'Pendiente' ? 'amber' : i.estado === 'Completada' ? 'green' : 'blue';
+    const tipoCls = i.tipo === 'Inicial (120 días)' ? 'blue' : i.tipo === 'Pre-vencimiento (1 mes)' ? 'amber' : 'gray';
+    const diasF = i.fecha ? diasParaVencer(i.fecha) : null;
+    let fechaLabel = '—';
+    if (i.fecha) {
+      fechaLabel = formatDateShort(i.fecha);
+      if (diasF !== null && diasF <= 7 && diasF >= 0) fechaLabel = `<span style="color:var(--red);font-weight:700;">${fechaLabel}</span>`;
+      else if (diasF !== null && diasF <= 30 && diasF > 0) fechaLabel = `<span style="color:var(--amber);font-weight:600;">${fechaLabel}</span>`;
+    }
     row.innerHTML = `
-      <div class="db-cell-name">${i.propiedad}</div>
+      <div>
+        <div class="db-cell-name">${i.propiedad}</div>
+        <div class="db-cell-tenant">${i.inquilino}</div>
+      </div>
+      <div><span class="badge ${tipoCls}" style="font-size:9px;">${i.tipo || 'Rutinaria'}</span></div>
+      <div class="db-cell-date">${fechaLabel}</div>
       <div><span class="badge ${badgeCls}">${i.estado}</span></div>
-      <div class="db-cell-tenant">${i.inquilino}</div>
       <button class="del-btn" onclick="deleteInspeccion('${i.id}')" title="Eliminar">✕</button>
     `;
     inspRows.appendChild(row);
@@ -1672,7 +1744,41 @@ async function saveContrato() {
   } else {
     c.creadoEn = Date.now();
     await setDoc(doc(db, 'contratos', c.id), c);
-    notify('✓ Contrato agregado');
+    // Auto-generar inspecciones programadas si hay fechas de inicio/vencimiento
+    const autoInsps = [];
+    if (c.inicio) {
+      const fecha120 = fechaAddDias(c.inicio, 120);
+      autoInsps.push({
+        id: (Date.now() + 1).toString(),
+        propiedad: c.nombre,
+        inquilino: c.inquilino,
+        estado: 'Pendiente',
+        tipo: 'Inicial (120 días)',
+        fecha: fecha120,
+        contratoId: c.id,
+        obs: 'Generada automáticamente — 120 días desde inicio del contrato',
+      });
+    }
+    if (c.vencimiento) {
+      const fechaMes = fechaRestarMes(c.vencimiento);
+      autoInsps.push({
+        id: (Date.now() + 2).toString(),
+        propiedad: c.nombre,
+        inquilino: c.inquilino,
+        estado: 'Pendiente',
+        tipo: 'Pre-vencimiento (1 mes)',
+        fecha: fechaMes,
+        contratoId: c.id,
+        obs: 'Generada automáticamente — 1 mes antes del vencimiento del contrato',
+      });
+    }
+    for (const insp of autoInsps) {
+      await setDoc(doc(db, 'inspecciones', insp.id), insp);
+    }
+    const msg = autoInsps.length > 0
+      ? `✓ Contrato agregado + ${autoInsps.length} inspección(es) programadas automáticamente`
+      : '✓ Contrato agregado';
+    notify(msg);
   }
   closeModal('modal-contrato');
 }
@@ -1767,17 +1873,101 @@ async function deleteContrato(id) {
 }
 
 // ===================== INSPECCIONES =====================
+function llenarSelectContratos() {
+  const sel = document.getElementById('i-contrato');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Sin vincular a contrato —</option>';
+  contratos.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.nombre} · ${c.inquilino}`;
+    sel.appendChild(opt);
+  });
+  sel.value = current;
+}
+
+function fechaAddDias(dateStr, dias) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().split('T')[0];
+}
+
+function fechaRestarMes(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().split('T')[0];
+}
+
+function onInspeccionContratoChange() {
+  const cid = document.getElementById('i-contrato').value;
+  const infoBox = document.getElementById('i-fechas-auto-info');
+  if (!cid) {
+    infoBox.style.display = 'none';
+    return;
+  }
+  const c = contratos.find(x => x.id === cid);
+  if (!c) { infoBox.style.display = 'none'; return; }
+
+  // Auto-fill propiedad e inquilino
+  document.getElementById('i-propiedad').value = c.nombre || '';
+  document.getElementById('i-inquilino').value = c.inquilino || '';
+
+  const fecha120 = c.inicio ? fechaAddDias(c.inicio, 120) : null;
+  const fechaMes = c.vencimiento ? fechaRestarMes(c.vencimiento) : null;
+
+  document.getElementById('i-fecha-120-label').textContent =
+    fecha120 ? `🔵 Inspección inicial (120 días): ${formatDate(fecha120)}` : '🔵 Inspección inicial: sin fecha de inicio en contrato';
+  document.getElementById('i-fecha-mes-label').textContent =
+    fechaMes ? `🟡 Pre-vencimiento (1 mes antes): ${formatDate(fechaMes)}` : '🟡 Pre-vencimiento: sin fecha de vencimiento en contrato';
+  infoBox.style.display = 'block';
+
+  // Auto-fill fecha según tipo seleccionado
+  autoFillFechaInspeccion();
+}
+
+function autoFillFechaInspeccion() {
+  const cid = document.getElementById('i-contrato').value;
+  const tipo = document.getElementById('i-tipo').value;
+  if (!cid) return;
+  const c = contratos.find(x => x.id === cid);
+  if (!c) return;
+  if (tipo === 'Inicial (120 días)' && c.inicio) {
+    document.getElementById('i-fecha').value = fechaAddDias(c.inicio, 120);
+  } else if (tipo === 'Pre-vencimiento (1 mes)' && c.vencimiento) {
+    document.getElementById('i-fecha').value = fechaRestarMes(c.vencimiento);
+  }
+}
+
 function openInspeccion() {
-  ['i-propiedad','i-inquilino'].forEach(id => document.getElementById(id).value = '');
+  ['i-propiedad','i-inquilino','i-obs'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('i-estado').value = 'Pendiente';
+  document.getElementById('i-tipo').value = 'Inicial (120 días)';
+  document.getElementById('i-fecha').value = '';
+  document.getElementById('i-contrato').value = '';
+  document.getElementById('i-fechas-auto-info').style.display = 'none';
+  llenarSelectContratos();
   document.getElementById('modal-inspeccion').classList.add('open');
 }
+
 async function saveInspeccion() {
   const prop = document.getElementById('i-propiedad').value.trim();
   const inq = document.getElementById('i-inquilino').value.trim();
   if (!prop) { notify('⚠️ Ingresa la propiedad'); return; }
   const id = Date.now().toString();
-  await setDoc(doc(db, 'inspecciones', id), { id, propiedad: prop, inquilino: inq || '—', estado: document.getElementById('i-estado').value });
+  const cid = document.getElementById('i-contrato').value;
+  await setDoc(doc(db, 'inspecciones', id), {
+    id,
+    propiedad: prop,
+    inquilino: inq || '—',
+    estado: document.getElementById('i-estado').value,
+    tipo: document.getElementById('i-tipo').value,
+    fecha: document.getElementById('i-fecha').value || null,
+    contratoId: cid || null,
+    obs: document.getElementById('i-obs').value.trim() || null,
+  });
   closeModal('modal-inspeccion');
   notify('✓ Inspección agregada');
 }
@@ -1890,6 +2080,8 @@ window.limpiarBusqueda = limpiarBusqueda;
 window.abrirBuscarContrato = abrirBuscarContrato;
 window.filtrarListaContratos = filtrarListaContratos;
 window.seleccionarContratoPago = seleccionarContratoPago;
+window.onInspeccionContratoChange = onInspeccionContratoChange;
+window.autoFillFechaInspeccion = autoFillFechaInspeccion;
 
 </script>
 </body>
