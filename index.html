@@ -311,12 +311,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     </div>
     <div class="field" style="margin-bottom:12px;">
       <label>Correo electrónico</label>
-      <input type="email" id="login-email" placeholder="tucorreo@gmail.com" style="width:100%">
+      <input type="email" id="login-email" placeholder="tucorreo@gmail.com" style="width:100%" onkeydown="if(event.key==='Enter'){document.getElementById('login-pass').focus();}">
     </div>
     <div class="field" style="margin-bottom:4px;">
       <label>Contraseña</label>
       <div style="position:relative;">
-        <input type="password" id="login-pass" placeholder="••••••••" style="width:100%; padding-right:40px;">
+        <input type="password" id="login-pass" placeholder="••••••••" style="width:100%; padding-right:40px;" onkeydown="if(event.key==='Enter'){document.getElementById('btn-login').click();}">
         <button onclick="togglePassVis()" id="btn-show-pass" title="Mostrar/ocultar contraseña" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; color:var(--text3); padding:0; line-height:1;">👁</button>
       </div>
     </div>
@@ -660,6 +660,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <label>Cargo</label>
           <input type="text" id="f-inq-rep-cargo" placeholder="Ej: Director General">
         </div>
+        <div class="field" style="grid-column: span 2">
+          <label>¿Quién vive en el inmueble?</label>
+          <textarea id="f-quien-vive" placeholder="Ej: El inquilino y su familia (esposa e hijos), o solo el inquilino, o empresa con 3 empleados..." style="min-height:60px"></textarea>
+          <span class="hint">Describe quiénes ocupan el inmueble actualmente</span>
+        </div>
         <div class="field">
           <label>Canon mensual (USD) *</label>
           <input type="number" id="f-monto" placeholder="Ej: 320" min="0">
@@ -814,16 +819,30 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         </div>
         <div class="field">
           <label>Fecha de evaluación del canon</label>
-          <input type="date" id="f-canon-fecha">
+          <input type="date" id="f-canon-fecha" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('f-canon-ajuste').focus();}">
           <span class="hint">Fecha en que se revisará o ajustará el canon</span>
         </div>
         <div class="field">
           <label>Porcentaje o monto de ajuste estimado</label>
-          <input type="text" id="f-canon-ajuste" placeholder="Ej: 10%, +$50 cada 6 meses">
+          <input type="text" id="f-canon-ajuste" placeholder="Ej: 10%, +$50 cada 6 meses" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('f-observaciones').focus();}">
         </div>
         <div class="field">
           <label>Observaciones adicionales</label>
-          <textarea id="f-observaciones" placeholder="Cualquier nota relevante sobre el contrato..."></textarea>
+          <textarea id="f-observaciones" placeholder="Cualquier nota relevante sobre el contrato..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('f-canon-revision-hecha').focus();}"></textarea>
+        </div>
+        <div class="field" style="grid-column:span 1">
+          <label style="margin-bottom:8px; display:block;">¿Qué incluye el canon?</label>
+          <div style="display:flex; gap:16px; flex-wrap:wrap;">
+            <label style="text-transform:none; letter-spacing:0; display:flex; gap:8px; align-items:center; cursor:pointer; font-size:13px; font-weight:500; color:var(--text2); background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 12px;">
+              <input type="checkbox" id="f-incluye-condominio" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
+              🏢 Incluye condominio
+            </label>
+            <label style="text-transform:none; letter-spacing:0; display:flex; gap:8px; align-items:center; cursor:pointer; font-size:13px; font-weight:500; color:var(--text2); background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 12px;">
+              <input type="checkbox" id="f-incluye-servicios" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
+              💡 Incluye servicios
+            </label>
+          </div>
+          <span class="hint">Si no está marcado, el inquilino los paga por separado</span>
         </div>
         <div class="field" style="background:var(--accent-light); border:1px solid #C5DECA; border-radius:var(--radius-sm); padding:10px 14px; margin-top:4px;">
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:13px; font-weight:600; color:var(--accent); margin-bottom:0;">
@@ -1215,15 +1234,85 @@ onAuthStateChanged(auth, async user => {
     await checkAdmin(user.uid);
     iniciarEscucha();
     mostrarApp();
+    iniciarTimerInactividad();
   } else {
     currentUser = null;
     isAdmin = false;
     if (unsubContratos) unsubContratos();
     if (unsubInspecciones) unsubInspecciones();
     contratos = []; inspecciones = [];
+    detenerTimerInactividad();
     mostrarLogin();
   }
 });
+
+// ===================== INACTIVIDAD (45 min) =====================
+let inactividadTimer = null;
+let inactividadRespuestaTimer = null;
+const INACTIVIDAD_MS = 45 * 60 * 1000; // 45 minutos
+const RESPUESTA_MS = 60 * 1000; // 1 minuto para responder
+
+function resetearInactividad() {
+  if (!currentUser) return;
+  clearTimeout(inactividadTimer);
+  inactividadTimer = setTimeout(preguntarSigueAhi, INACTIVIDAD_MS);
+}
+
+function iniciarTimerInactividad() {
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(ev => {
+    document.addEventListener(ev, resetearInactividad, { passive: true });
+  });
+  resetearInactividad();
+}
+
+function detenerTimerInactividad() {
+  clearTimeout(inactividadTimer);
+  clearTimeout(inactividadRespuestaTimer);
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(ev => {
+    document.removeEventListener(ev, resetearInactividad);
+  });
+}
+
+function preguntarSigueAhi() {
+  // Crear modal de inactividad
+  let modal = document.getElementById('inactividad-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'inactividad-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px 36px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+        <div style="font-size:36px;margin-bottom:12px;">⏱</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">¿Sigues ahí?</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.5;">Por seguridad, la sesión se cerrará automáticamente en <strong id="inact-countdown">60</strong> segundos si no hay actividad.</div>
+        <button id="inact-continuar" class="btn primary" style="width:100%;padding:10px;font-size:14px;">✅ Sí, continuar</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+
+  let segundos = 60;
+  const countEl = document.getElementById('inact-countdown');
+  countEl.textContent = segundos;
+
+  clearInterval(inactividadRespuestaTimer);
+  inactividadRespuestaTimer = setInterval(() => {
+    segundos--;
+    if (countEl) countEl.textContent = segundos;
+    if (segundos <= 0) {
+      clearInterval(inactividadRespuestaTimer);
+      modal.style.display = 'none';
+      signOut(auth);
+    }
+  }, 1000);
+
+  document.getElementById('inact-continuar').onclick = () => {
+    clearInterval(inactividadRespuestaTimer);
+    modal.style.display = 'none';
+    resetearInactividad();
+  };
+}
 
 // ===================== UTILS =====================
 async function save() {
@@ -1531,14 +1620,7 @@ function updateAlerts() {
   contratos.forEach(c => {
     if (c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '') {
       if (c.canonRevisionHecha) {
-        // Mostrar como completada (atenuada, con opción de desmarcar)
-        canones.push({
-          type: 'green', icon: '✅',
-          title: `Canon revisado: ${c.nombre}`,
-          meta: [`👤 ${c.inquilino}`, `Canon: $${c.monto}`, `${c.canonCond}`, `Revisión completada`],
-          badge: { text: 'LISTO', cls: 'green' },
-          dias: 99999, contractId: c.id, accion: 'detalle', revisionHecha: true
-        });
+        // NO mostrar en dashboard si ya está marcada como revisada
         return;
       }
       if (!c.canonFecha) return; // sin fecha no mostramos
@@ -1578,8 +1660,10 @@ function updateAlerts() {
   // ── SECCIÓN RENOVACIONES ──
   const renovaciones = [];
   contratos.forEach(c => {
-    // Excluir ya históricos
+    // Excluir ya históricos y ya renovados
     if (c.estado === 'Histórico') return;
+    // Ocultar si ya fue renovado (tiene un contrato nuevo que lo reemplaza)
+    if (c.renovadoPorId) return;
     const dias = diasParaVencer(c.vencimiento);
     if (dias === null) return;
     if (dias <= 60 && dias >= 0) {
@@ -1960,6 +2044,7 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Rep. legal</span><span class="detail-val">${c.inqRep || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">C.I. representante</span><span class="detail-val">${c.inqRepCI || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Cargo</span><span class="detail-val">${c.inqRepCargo || '—'}</span></div>` : ''}
+      ${c.quienVive ? `<div class="detail-row"><span class="detail-label">¿Quién vive?</span><span class="detail-val">${c.quienVive}</span></div>` : ''}
     </div>
 
     <div class="detail-section">
@@ -2004,6 +2089,7 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Ajuste estimado</span><span class="detail-val">${c.canonAjuste || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Fecha evaluación</span><span class="detail-val">${formatDate(c.canonFecha)}</span></div>
       <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? `<span style="color:var(--accent);font-weight:700;">✅ ${c.canonFechaRevision ? formatDate(c.canonFechaRevision) : 'Sí'}${c.montoAnterior && c.montoAnterior !== c.monto ? ' · Cambió de $' + parseFloat(c.montoAnterior).toLocaleString('es') + ' → $' + parseFloat(c.monto).toLocaleString('es') : ''}</span>` : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
+      <div class="detail-row"><span class="detail-label">Incluye</span><span class="detail-val">${[c.incluyeCondominio ? '🏢 Condominio' : null, c.incluyeServicios ? '💡 Servicios' : null].filter(Boolean).join(' · ') || '<span style="color:var(--text3)">No incluye ninguno</span>'}</span></div>
       ${c.observaciones ? `<div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-val">${c.observaciones}</span></div>` : ''}
     </div>
 
@@ -2041,13 +2127,15 @@ function closeDetail(e) {
 function clearForm() {
   ['f-nombre','f-inquilino','f-direccion','f-monto','f-deposito','f-inicio','f-vencimiento',
    'f-ultimo-pago','f-prox-cobro',
-   'f-inq-doc','f-inq-rep','f-inq-rep-ci','f-inq-rep-cargo',
+   'f-inq-doc','f-inq-rep','f-inq-rep-ci','f-inq-rep-cargo','f-quien-vive',
    'f-prop1-nombre','f-prop1-ci','f-prop1-tel',
    'f-prop2-nombre','f-prop2-ci','f-prop2-tel',
    'f-pagador','f-pagador-tel','f-pagador-rel',
    'f-cuenta','f-monto-cobro','f-canon-fecha','f-canon-ajuste','f-canon-desc','f-observaciones'
   ].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('f-canon-revision-hecha').checked = false;
+  document.getElementById('f-incluye-condominio').checked = false;
+  document.getElementById('f-incluye-servicios').checked = false;
   document.getElementById('f-estado').value = 'Activo';
   document.getElementById('f-frecuencia').value = 'Mensual';
   document.getElementById('f-inq-tipo').value = 'Natural';
@@ -2090,6 +2178,7 @@ function editContrato(id) {
   document.getElementById('f-inq-rep').value = c.inqRep || '';
   document.getElementById('f-inq-rep-ci').value = c.inqRepCI || '';
   document.getElementById('f-inq-rep-cargo').value = c.inqRepCargo || '';
+  document.getElementById('f-quien-vive').value = c.quienVive || '';
   toggleInqJuridico();
   // Propietarios
   document.getElementById('f-prop1-nombre').value = c.prop1Nombre || '';
@@ -2117,6 +2206,8 @@ function editContrato(id) {
   document.getElementById('f-canon-ajuste').value = c.canonAjuste || '';
   document.getElementById('f-observaciones').value = c.observaciones || '';
   document.getElementById('f-canon-revision-hecha').checked = c.canonRevisionHecha || false;
+  document.getElementById('f-incluye-condominio').checked = c.incluyeCondominio || false;
+  document.getElementById('f-incluye-servicios').checked = c.incluyeServicios || false;
   toggleCanonCond();
   switchTab(0);
   document.getElementById('modal-contrato').classList.add('open');
@@ -2156,6 +2247,7 @@ async function saveContrato() {
     inqRep: document.getElementById('f-inq-rep').value.trim(),
     inqRepCI: document.getElementById('f-inq-rep-ci').value.trim(),
     inqRepCargo: document.getElementById('f-inq-rep-cargo').value.trim(),
+    quienVive: document.getElementById('f-quien-vive').value.trim(),
     // Propietarios
     prop1Nombre: document.getElementById('f-prop1-nombre').value.trim(),
     prop1CI: document.getElementById('f-prop1-ci').value.trim(),
@@ -2178,6 +2270,8 @@ async function saveContrato() {
     canonAjuste: document.getElementById('f-canon-ajuste').value.trim(),
     observaciones: document.getElementById('f-observaciones').value.trim(),
     canonRevisionHecha: document.getElementById('f-canon-revision-hecha').checked,
+    incluyeCondominio: document.getElementById('f-incluye-condominio').checked,
+    incluyeServicios: document.getElementById('f-incluye-servicios').checked,
   };
 
   if (editingId) {
