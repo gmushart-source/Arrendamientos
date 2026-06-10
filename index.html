@@ -345,7 +345,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       <span class="s-badge amber" id="sb-vencer">0</span>
     </div>
     <div class="sidebar-item" onclick="showView('renovacion')">
-      <span class="s-icon">↺</span> Renovación
+      <span class="s-icon">📁</span> Contratos vencidos
       <span class="s-badge red" id="sb-renov">0</span>
     </div>
     <div class="sidebar-item" onclick="showView('inspecciones')">
@@ -391,9 +391,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <div class="callout-sub">próx. 60 días</div>
         </div>
         <div class="callout red">
-          <div class="callout-label">Renovación</div>
+          <div class="callout-label">Vencidos</div>
           <div class="callout-num" id="stat-renov">0</div>
-          <div class="callout-sub">en proceso</div>
+          <div class="callout-sub">contratos vencidos</div>
         </div>
         <div class="callout blue">
           <div class="callout-label">Inspecciones</div>
@@ -489,6 +489,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <div class="section-title" style="margin:0; flex:1">📄 Todos los contratos</div>
         <button class="add-btn" onclick="openContrato()">＋ Nuevo contrato</button>
       </div>
+      <div class="search-bar-wrap" style="margin-bottom:12px;">
+        <span class="search-bar-icon">🔍</span>
+        <input type="text" class="search-bar" id="contratos-search" placeholder="Buscar por propiedad, inquilino, estado…" oninput="filtrarVistaContratos(this.value)">
+        <button class="search-bar-clear" id="contratos-search-clear" onclick="limpiarBusquedaContratos()">✕</button>
+      </div>
+      <div class="search-bar-results" id="contratos-search-results" style="display:none"></div>
       <div class="db-table" id="full-table">
         <div class="db-row header-row">
           <div>Propiedad / Contrato</div>
@@ -528,10 +534,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       </div>
     </div>
 
-    <!-- ===== RENOVACIÓN ===== -->
+    <!-- ===== CONTRATOS VENCIDOS ===== -->
     <div id="view-renovacion" class="view" style="display:none">
       <div class="db-toolbar">
-        <div class="section-title" style="margin:0">↺ Contratos en renovación</div>
+        <div class="section-title" style="margin:0">📁 Contratos vencidos</div>
       </div>
       <div class="db-table" id="renov-table">
         <div class="db-row header-row">
@@ -544,8 +550,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <div></div>
         </div>
         <div class="empty-state" id="renov-empty">
-          <div class="e-icon">↺</div>
-          <div>No hay contratos en proceso de renovación.</div>
+          <div class="e-icon">📁</div>
+          <div>No hay contratos vencidos.</div>
         </div>
       </div>
     </div>
@@ -661,7 +667,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
           <input type="text" id="f-inq-rep-cargo" placeholder="Ej: Director General">
         </div>
         <div class="field" style="grid-column: span 2">
-          <label>¿Quién vive en el inmueble?</label>
+          <label>¿Quién usa el inmueble?</label>
           <textarea id="f-quien-vive" placeholder="Ej: El inquilino y su familia (esposa e hijos), o solo el inquilino, o empresa con 3 empleados..." style="min-height:60px"></textarea>
           <span class="hint">Describe quiénes ocupan el inmueble actualmente</span>
         </div>
@@ -753,15 +759,31 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       <div class="form-grid">
         <div class="field" style="grid-column: span 2">
           <label>¿Quién realiza los pagos?</label>
-          <input type="text" id="f-pagador" placeholder="Nombre (puede ser distinto al inquilino)">
+          <select id="f-pagador-tipo" onchange="togglePagadorTipo()">
+            <option value="inquilino">La misma persona que usa el inmueble</option>
+            <option value="externo">Un tercero / externo</option>
+          </select>
         </div>
-        <div class="field">
-          <label>Teléfono del pagador</label>
-          <input type="tel" id="f-pagador-tel" placeholder="Ej: 0424-1234567">
+        <div id="pagador-externo-fields" style="display:none; grid-column:span 2;">
+          <div class="form-grid" style="margin-top:0;">
+            <div class="field" style="grid-column: span 2">
+              <label>Nombre del pagador externo</label>
+              <input type="text" id="f-pagador" placeholder="Nombre completo del responsable de pago">
+            </div>
+            <div class="field">
+              <label>Teléfono del pagador</label>
+              <input type="tel" id="f-pagador-tel" placeholder="Ej: 0424-1234567">
+            </div>
+            <div class="field">
+              <label>Relación con inquilino</label>
+              <input type="text" id="f-pagador-rel" placeholder="Ej: Empresa empleadora, familiar">
+            </div>
+          </div>
         </div>
-        <div class="field">
-          <label>Relación con inquilino</label>
-          <input type="text" id="f-pagador-rel" placeholder="Ej: Empresa empleadora, familiar">
+        <div id="pagador-inquilino-fields" style="grid-column:span 2;">
+          <div style="background:var(--accent-light); border:1px solid #C5DECA; border-radius:var(--radius-sm); padding:10px 14px; font-size:12px; color:var(--accent);">
+            ✅ El pago lo realiza directamente el ocupante del inmueble.
+          </div>
         </div>
       </div>
 
@@ -840,6 +862,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
             <label style="text-transform:none; letter-spacing:0; display:flex; gap:8px; align-items:center; cursor:pointer; font-size:13px; font-weight:500; color:var(--text2); background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 12px;">
               <input type="checkbox" id="f-incluye-servicios" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
               💡 Incluye servicios
+            </label>
+            <label style="text-transform:none; letter-spacing:0; display:flex; gap:8px; align-items:center; cursor:pointer; font-size:13px; font-weight:500; color:var(--text2); background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 12px;">
+              <input type="checkbox" id="f-incluye-aseo" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;">
+              🧹 Día de aseo
             </label>
           </div>
           <span class="hint">Si no está marcado, el inquilino los paga por separado</span>
@@ -1285,7 +1311,10 @@ function preguntarSigueAhi() {
         <div style="font-size:36px;margin-bottom:12px;">⏱</div>
         <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">¿Sigues ahí?</div>
         <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.5;">Por seguridad, la sesión se cerrará automáticamente en <strong id="inact-countdown">60</strong> segundos si no hay actividad.</div>
-        <button id="inact-continuar" class="btn primary" style="width:100%;padding:10px;font-size:14px;">✅ Sí, continuar</button>
+        <div style="display:flex; gap:10px;">
+          <button id="inact-no" class="btn secondary" style="flex:1;padding:10px;font-size:13px;">🚪 Cerrar sesión</button>
+          <button id="inact-continuar" class="btn primary" style="flex:1;padding:10px;font-size:14px;">✅ Sí, continuar</button>
+        </div>
       </div>
     `;
     document.body.appendChild(modal);
@@ -1311,6 +1340,11 @@ function preguntarSigueAhi() {
     clearInterval(inactividadRespuestaTimer);
     modal.style.display = 'none';
     resetearInactividad();
+  };
+  document.getElementById('inact-no').onclick = () => {
+    clearInterval(inactividadRespuestaTimer);
+    modal.style.display = 'none';
+    signOut(auth);
   };
 }
 
@@ -1847,10 +1881,10 @@ function renderTables() {
   renderDashTable();
 
   const tables = {
-    full:   { el: document.getElementById('full-table'),   empty: document.getElementById('full-empty'),   filter: null },
     vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return c.estado !== 'Histórico' && d !== null && d <= 60 && c.estado !== 'Vencido'; } },
-    renov:  { el: document.getElementById('renov-table'),  empty: document.getElementById('renov-empty'),  filter: c => c.estado === 'Renovación' },
+    renov:  { el: document.getElementById('renov-table'),  empty: document.getElementById('renov-empty'),  filter: c => c.estado === 'Vencido' || c.estado === 'Renovación' },
   };
+  renderFullTable();
   Object.entries(tables).forEach(([key, t]) => {
     [...t.el.children].forEach(ch => { if (!ch.classList.contains('header-row') && !ch.classList.contains('empty-state')) ch.remove(); });
     const filtered = t.filter ? contratos.filter(t.filter) : contratos;
@@ -2044,7 +2078,7 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Rep. legal</span><span class="detail-val">${c.inqRep || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">C.I. representante</span><span class="detail-val">${c.inqRepCI || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Cargo</span><span class="detail-val">${c.inqRepCargo || '—'}</span></div>` : ''}
-      ${c.quienVive ? `<div class="detail-row"><span class="detail-label">¿Quién vive?</span><span class="detail-val">${c.quienVive}</span></div>` : ''}
+      ${c.quienVive ? `<div class="detail-row"><span class="detail-label">¿Quién usa?</span><span class="detail-val">${c.quienVive}</span></div>` : ''}
     </div>
 
     <div class="detail-section">
@@ -2062,8 +2096,9 @@ function openDetailPanel(id) {
 
     <div class="detail-section">
       <div class="detail-section-title">💳 Pagos</div>
-      <div class="detail-row"><span class="detail-label">Pagador</span><span class="detail-val">${c.pagador || c.inquilino}</span></div>
-      <div class="detail-row"><span class="detail-label">Teléfono</span><span class="detail-val">${c.pagadorTel || '—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Pagador</span><span class="detail-val">${c.pagadorTipo === 'externo' && c.pagador ? c.pagador : `${c.inquilino} <span style="font-size:10px;color:var(--accent);">(mismo ocupante)</span>`}</span></div>
+      ${c.pagadorTipo === 'externo' && c.pagadorTel ? `<div class="detail-row"><span class="detail-label">Tel. pagador</span><span class="detail-val">${c.pagadorTel}</span></div>` : ''}
+      ${c.pagadorTipo === 'externo' && c.pagadorRel ? `<div class="detail-row"><span class="detail-label">Relación</span><span class="detail-val">${c.pagadorRel}</span></div>` : ''}
       <div class="detail-row"><span class="detail-label">Método(s)</span><span class="detail-val">${metodos}</span></div>
       ${c.cuenta ? `<div class="detail-row"><span class="detail-label">Cuenta / Wallet</span><span class="detail-val">${c.cuenta}</span></div>` : ''}
       ${c.montoCobro ? `<div class="detail-row"><span class="detail-label">Monto a cobrar</span><span class="detail-val" style="font-weight:700;color:var(--accent)">$${parseFloat(c.montoCobro).toLocaleString('es')} USD</span></div>` : ''}
@@ -2089,7 +2124,7 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Ajuste estimado</span><span class="detail-val">${c.canonAjuste || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Fecha evaluación</span><span class="detail-val">${formatDate(c.canonFecha)}</span></div>
       <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? `<span style="color:var(--accent);font-weight:700;">✅ ${c.canonFechaRevision ? formatDate(c.canonFechaRevision) : 'Sí'}${c.montoAnterior && c.montoAnterior !== c.monto ? ' · Cambió de $' + parseFloat(c.montoAnterior).toLocaleString('es') + ' → $' + parseFloat(c.monto).toLocaleString('es') : ''}</span>` : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
-      <div class="detail-row"><span class="detail-label">Incluye</span><span class="detail-val">${[c.incluyeCondominio ? '🏢 Condominio' : null, c.incluyeServicios ? '💡 Servicios' : null].filter(Boolean).join(' · ') || '<span style="color:var(--text3)">No incluye ninguno</span>'}</span></div>
+      <div class="detail-row"><span class="detail-label">Incluye</span><span class="detail-val">${[c.incluyeCondominio ? '🏢 Condominio' : null, c.incluyeServicios ? '💡 Servicios' : null, c.incluyeAseo ? '🧹 Aseo' : null].filter(Boolean).join(' · ') || '<span style="color:var(--text3)">No incluye ninguno</span>'}</span></div>
       ${c.observaciones ? `<div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-val">${c.observaciones}</span></div>` : ''}
     </div>
 
@@ -2136,10 +2171,13 @@ function clearForm() {
   document.getElementById('f-canon-revision-hecha').checked = false;
   document.getElementById('f-incluye-condominio').checked = false;
   document.getElementById('f-incluye-servicios').checked = false;
+  document.getElementById('f-incluye-aseo').checked = false;
   document.getElementById('f-estado').value = 'Activo';
   document.getElementById('f-frecuencia').value = 'Mensual';
   document.getElementById('f-inq-tipo').value = 'Natural';
   document.getElementById('f-canon-cond').value = '';
+  document.getElementById('f-pagador-tipo').value = 'inquilino';
+  togglePagadorTipo();
   ['m-efectivo','m-zelle','m-usdt','m-pagomovil','m-transferencia'].forEach(id => {
     document.getElementById(id).checked = false;
   });
@@ -2188,9 +2226,6 @@ function editContrato(id) {
   document.getElementById('f-prop2-ci').value = c.prop2CI || '';
   document.getElementById('f-prop2-tel').value = c.prop2Tel || '';
   // Pagos
-  document.getElementById('f-pagador').value = c.pagador || '';
-  document.getElementById('f-pagador-tel').value = c.pagadorTel || '';
-  document.getElementById('f-pagador-rel').value = c.pagadorRel || '';
   document.getElementById('f-cuenta').value = c.cuenta || '';
   document.getElementById('f-monto-cobro').value = c.montoCobro || '';
   if (c.metodosPago) {
@@ -2208,6 +2243,16 @@ function editContrato(id) {
   document.getElementById('f-canon-revision-hecha').checked = c.canonRevisionHecha || false;
   document.getElementById('f-incluye-condominio').checked = c.incluyeCondominio || false;
   document.getElementById('f-incluye-servicios').checked = c.incluyeServicios || false;
+  document.getElementById('f-incluye-aseo').checked = c.incluyeAseo || false;
+  // Pagador tipo
+  const tieneExterno = !!(c.pagador && c.pagador.trim());
+  document.getElementById('f-pagador-tipo').value = tieneExterno ? 'externo' : 'inquilino';
+  togglePagadorTipo();
+  if (tieneExterno) {
+    document.getElementById('f-pagador').value = c.pagador || '';
+    document.getElementById('f-pagador-tel').value = c.pagadorTel || '';
+    document.getElementById('f-pagador-rel').value = c.pagadorRel || '';
+  }
   toggleCanonCond();
   switchTab(0);
   document.getElementById('modal-contrato').classList.add('open');
@@ -2256,9 +2301,6 @@ async function saveContrato() {
     prop2CI: document.getElementById('f-prop2-ci').value.trim(),
     prop2Tel: document.getElementById('f-prop2-tel').value.trim(),
     // Pagos
-    pagador: document.getElementById('f-pagador').value.trim(),
-    pagadorTel: document.getElementById('f-pagador-tel').value.trim(),
-    pagadorRel: document.getElementById('f-pagador-rel').value.trim(),
     metodosPago,
     cuenta: document.getElementById('f-cuenta').value.trim(),
     montoCobro: document.getElementById('f-monto-cobro').value ? parseFloat(document.getElementById('f-monto-cobro').value) : '',
@@ -2272,6 +2314,11 @@ async function saveContrato() {
     canonRevisionHecha: document.getElementById('f-canon-revision-hecha').checked,
     incluyeCondominio: document.getElementById('f-incluye-condominio').checked,
     incluyeServicios: document.getElementById('f-incluye-servicios').checked,
+    incluyeAseo: document.getElementById('f-incluye-aseo').checked,
+    pagadorTipo: document.getElementById('f-pagador-tipo').value,
+    pagador: document.getElementById('f-pagador-tipo').value === 'externo' ? (document.getElementById('f-pagador')?.value?.trim() || '') : '',
+    pagadorTel: document.getElementById('f-pagador-tipo').value === 'externo' ? (document.getElementById('f-pagador-tel')?.value?.trim() || '') : '',
+    pagadorRel: document.getElementById('f-pagador-tipo').value === 'externo' ? (document.getElementById('f-pagador-rel')?.value?.trim() || '') : '',
   };
 
   if (editingId) {
@@ -2782,6 +2829,69 @@ function renderCanonRevisiones() {
 
 window.filtrarCanonRevisiones = filtrarCanonRevisiones;
 
+// ===================== PAGADOR TIPO TOGGLE =====================
+function togglePagadorTipo() {
+  const tipo = document.getElementById('f-pagador-tipo')?.value;
+  const extFields = document.getElementById('pagador-externo-fields');
+  const inqFields = document.getElementById('pagador-inquilino-fields');
+  if (!extFields || !inqFields) return;
+  if (tipo === 'externo') {
+    extFields.style.display = '';
+    inqFields.style.display = 'none';
+  } else {
+    extFields.style.display = 'none';
+    inqFields.style.display = '';
+    // Limpiar campos externos al cambiar a inquilino
+    const pagador = document.getElementById('f-pagador');
+    const tel = document.getElementById('f-pagador-tel');
+    const rel = document.getElementById('f-pagador-rel');
+    if (pagador) pagador.value = '';
+    if (tel) tel.value = '';
+    if (rel) rel.value = '';
+  }
+}
+
+// ===================== BUSCAR EN VISTA CONTRATOS =====================
+let contratosBusquedaActual = '';
+
+function filtrarVistaContratos(q) {
+  contratosBusquedaActual = q.trim().toLowerCase();
+  const clearBtn = document.getElementById('contratos-search-clear');
+  const resEl = document.getElementById('contratos-search-results');
+  if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+  renderFullTable();
+  if (contratosBusquedaActual) {
+    const total = contratos.filter(c => matchSearch(c, contratosBusquedaActual)).length;
+    if (resEl) { resEl.style.display = ''; resEl.textContent = `${total} resultado(s) para "${q}"`; }
+  } else {
+    if (resEl) resEl.style.display = 'none';
+  }
+}
+
+function limpiarBusquedaContratos() {
+  const input = document.getElementById('contratos-search');
+  if (input) input.value = '';
+  filtrarVistaContratos('');
+}
+
+function matchSearch(c, q) {
+  return (c.nombre||'').toLowerCase().includes(q) ||
+         (c.inquilino||'').toLowerCase().includes(q) ||
+         (c.estado||'').toLowerCase().includes(q) ||
+         (c.direccion||'').toLowerCase().includes(q);
+}
+
+function renderFullTable() {
+  const table = document.getElementById('full-table');
+  const empty = document.getElementById('full-empty');
+  if (!table || !empty) return;
+  [...table.children].forEach(ch => { if (!ch.classList.contains('header-row') && !ch.classList.contains('empty-state')) ch.remove(); });
+  const q = contratosBusquedaActual;
+  const filtered = q ? contratos.filter(c => matchSearch(c, q)) : contratos;
+  empty.style.display = filtered.length === 0 ? '' : 'none';
+  filtered.forEach(c => table.insertBefore(makeRow(c, 'full'), empty));
+}
+
 // ===================== VIEWS =====================
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
@@ -2873,6 +2983,9 @@ window.onInspeccionContratoChange = onInspeccionContratoChange;
 window.autoFillFechaInspeccion = autoFillFechaInspeccion;
 window.toggleInspeccionCompletada = toggleInspeccionCompletada;
 window.confirmarCompletarInspeccion = confirmarCompletarInspeccion;
+window.togglePagadorTipo = togglePagadorTipo;
+window.filtrarVistaContratos = filtrarVistaContratos;
+window.limpiarBusquedaContratos = limpiarBusquedaContratos;
 
 </script>
 </body>
