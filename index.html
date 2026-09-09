@@ -1049,6 +1049,23 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <label>Nuevo depósito (USD)</label>
         <input type="number" id="ren-deposito" min="0" step="0.01" placeholder="Dejar vacío para mantener">
       </div>
+      <div class="field" style="grid-column:span 2; display:flex; align-items:center; gap:8px; margin-top:4px;">
+        <input type="checkbox" id="ren-tiene-segundo-canon" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;" onchange="toggleSegundoCanonRen()">
+        <label style="margin:0; cursor:pointer;" onclick="document.getElementById('ren-tiene-segundo-canon').click()">📈 Este contrato tendrá un segundo canon programado</label>
+      </div>
+      <div id="ren-segundo-canon-fields" style="display:none; grid-column:span 2;">
+        <div class="form-grid" style="margin:0;">
+          <div class="field">
+            <label>Monto del segundo canon (USD) *</label>
+            <input type="number" id="ren-segundo-monto" min="0" step="0.01" placeholder="Ej: 350">
+          </div>
+          <div class="field">
+            <label>Fecha en que inicia el segundo canon *</label>
+            <input type="date" id="ren-segundo-fecha">
+            <span class="hint">Puede ser cualquier fecha, independientemente de la duración del contrato.</span>
+          </div>
+        </div>
+      </div>
       <div class="field" style="grid-column:span 2">
         <label>Observaciones de la renovación</label>
         <textarea id="ren-obs" placeholder="Ej: Ajuste de canon acordado, nuevas condiciones…" style="min-height:60px"></textarea>
@@ -1787,6 +1804,10 @@ function openRenovarContrato(id) {
   document.getElementById('ren-monto').value = c.monto || '';
   document.getElementById('ren-deposito').value = '';
   document.getElementById('ren-obs').value = '';
+  document.getElementById('ren-tiene-segundo-canon').checked = false;
+  document.getElementById('ren-segundo-monto').value = '';
+  document.getElementById('ren-segundo-fecha').value = '';
+  document.getElementById('ren-segundo-canon-fields').style.display = 'none';
 
   document.getElementById('renovar-contrato-info').innerHTML = `
     <div style="font-weight:700; font-size:14px; margin-bottom:4px;">🏠 ${c.nombre}</div>
@@ -1798,6 +1819,12 @@ function openRenovarContrato(id) {
   document.getElementById('modal-renovar').classList.add('open');
 }
 
+function toggleSegundoCanonRen() {
+  const activo = document.getElementById('ren-tiene-segundo-canon').checked;
+  document.getElementById('ren-segundo-canon-fields').style.display = activo ? 'block' : 'none';
+}
+window.toggleSegundoCanonRen = toggleSegundoCanonRen;
+
 async function confirmarRenovacion() {
   const nuevoInicio = document.getElementById('ren-inicio').value;
   const nuevoVenc = document.getElementById('ren-vencimiento').value;
@@ -1806,6 +1833,15 @@ async function confirmarRenovacion() {
     notify('⚠️ Completa los campos obligatorios');
     return;
   }
+
+  const tieneSegundoCanon = document.getElementById('ren-tiene-segundo-canon').checked;
+  const segundoMonto = document.getElementById('ren-segundo-monto').value;
+  const segundoFecha = document.getElementById('ren-segundo-fecha').value;
+  if (tieneSegundoCanon && (!segundoMonto || !segundoFecha)) {
+    notify('⚠️ Completa el monto y la fecha del segundo canon, o desmarca la opción');
+    return;
+  }
+
   const c = contratos.find(x => x.id === renovandoId);
   if (!c) return;
 
@@ -1834,6 +1870,8 @@ async function confirmarRenovacion() {
     creadoEn: Date.now(),
     renovadoDesdeId: renovandoId,
     observaciones: nuevoObs || c.observaciones || '',
+    segundoCanon: tieneSegundoCanon ? parseFloat(segundoMonto) : '',
+    segundoCanonFecha: tieneSegundoCanon ? segundoFecha : '',
   };
 
   // 3. Actualizar anterior a histórico y guardar nuevo
@@ -2124,6 +2162,7 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Ajuste estimado</span><span class="detail-val">${c.canonAjuste || '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Fecha evaluación</span><span class="detail-val">${formatDate(c.canonFecha)}</span></div>
       <div class="detail-row"><span class="detail-label">Revisión realizada</span><span class="detail-val">${c.canonRevisionHecha ? `<span style="color:var(--accent);font-weight:700;">✅ ${c.canonFechaRevision ? formatDate(c.canonFechaRevision) : 'Sí'}${c.montoAnterior && c.montoAnterior !== c.monto ? ' · Cambió de $' + parseFloat(c.montoAnterior).toLocaleString('es') + ' → $' + parseFloat(c.monto).toLocaleString('es') : ''}</span>` : '<span style="color:var(--text3);">⬜ Pendiente</span>'}</span></div>
+      ${c.segundoCanon && c.segundoCanonFecha ? `<div class="detail-row"><span class="detail-label">2do canon programado</span><span class="detail-val" style="font-weight:700;color:var(--accent)">$${parseFloat(c.segundoCanon).toLocaleString('es')} USD desde ${formatDate(c.segundoCanonFecha)}</span></div>` : ''}
       <div class="detail-row"><span class="detail-label">Incluye</span><span class="detail-val">${[c.incluyeCondominio ? '🏢 Condominio' : null, c.incluyeServicios ? '💡 Servicios' : null, c.incluyeAseo ? '🧹 Aseo' : null].filter(Boolean).join(' · ') || '<span style="color:var(--text3)">No incluye ninguno</span>'}</span></div>
       ${c.observaciones ? `<div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-val">${c.observaciones}</span></div>` : ''}
     </div>
@@ -2369,6 +2408,15 @@ async function saveContrato() {
 // ===================== MODAL REGISTRAR PAGO =====================
 let pagandoId = null;
 
+// Determina el canon que aplica para una fecha de pago dada, considerando
+// un segundo canon programado (independiente de la duración del contrato).
+function montoVigente(c, fecha) {
+  if (c.segundoCanon && c.segundoCanonFecha && fecha >= c.segundoCanonFecha) {
+    return c.segundoCanon;
+  }
+  return c.montoCobro || c.monto || '';
+}
+
 function openRegistrarPago(id) {
   const c = contratos.find(x => x.id === id);
   if (!c) return;
@@ -2376,7 +2424,7 @@ function openRegistrarPago(id) {
 
   const hoy = new Date().toISOString().split('T')[0];
   document.getElementById('p-fecha').value = hoy;
-  document.getElementById('p-monto').value = c.montoCobro || c.monto || '';
+  document.getElementById('p-monto').value = montoVigente(c, hoy);
   document.getElementById('p-metodo').value = (c.metodosPago && c.metodosPago.length === 1) ? c.metodosPago[0] : '';
   document.getElementById('p-referencia').value = '';
   document.getElementById('p-obs').value = '';
@@ -2405,6 +2453,7 @@ function openRegistrarPago(id) {
   document.getElementById('p-fecha').onchange = function() {
     const np = calcProxCobro(this.value, c.frecuencia, diaIni);
     document.getElementById('p-prox-label').textContent = formatDate(np);
+    document.getElementById('p-monto').value = montoVigente(c, this.value);
   };
 
   document.getElementById('modal-pago').classList.add('open');
