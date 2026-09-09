@@ -189,6 +189,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .btn.primary:hover { background: #163D2E; }
 .btn.secondary { background: var(--surface); border-color: var(--border); color: var(--text2); }
 .btn.secondary:hover { background: var(--surface2); }
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger:hover { background: #6E1919; }
 
 /* Cobro chip */
 .cobro-chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
@@ -690,6 +692,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
             <option value="Por vencer">Por vencer</option>
             <option value="Renovación">Renovación</option>
             <option value="Vencido">Vencido</option>
+            <option value="Finalizado">Finalizado</option>
+            <option value="No renovado">No renovado</option>
             <option value="Histórico">Histórico</option>
           </select>
         </div>
@@ -1081,6 +1085,32 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   </div>
 </div>
 
+<!-- ===== MODAL FINALIZAR CONTRATO ANTICIPADAMENTE ===== -->
+<div class="modal-backdrop" id="modal-finalizar-contrato">
+  <div class="modal" style="width:480px">
+    <div class="modal-title">🛑 Finalizar contrato anticipadamente</div>
+    <div id="finalizar-contrato-info" style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:18px; font-size:13px;"></div>
+    <div class="form-grid">
+      <div class="field" style="grid-column:span 2">
+        <label>Fecha de finalización *</label>
+        <input type="date" id="fin-fecha">
+        <span class="hint">Puede ser cualquier fecha; no depende del vencimiento original del contrato.</span>
+      </div>
+      <div class="field" style="grid-column:span 2">
+        <label>Motivo (opcional)</label>
+        <textarea id="fin-motivo" placeholder="Ej: Mutuo acuerdo, incumplimiento, venta del inmueble…" style="min-height:60px"></textarea>
+      </div>
+    </div>
+    <div style="background:var(--red-bg); border:1px solid #F0AAAA; border-radius:var(--radius-sm); padding:10px 14px; margin-top:12px; font-size:12px; color:var(--red);">
+      ⚠️ El contrato pasará a estado <strong>Finalizado</strong>, dejará de generar cobros y alertas de renovación, y no se eliminará del historial.
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('modal-finalizar-contrato')">Cancelar</button>
+      <button class="btn danger" onclick="confirmarFinalizarContrato()">🛑 Finalizar contrato</button>
+    </div>
+  </div>
+</div>
+
 <!-- NOTIFICACIÓN -->
 <div class="notif" id="notif"></div>
 
@@ -1377,6 +1407,13 @@ function notify(msg) {
   setTimeout(() => el.classList.remove('show'), 2800);
 }
 
+// Un contrato "cerrado" no debe generar cobros, alertas de renovación ni
+// aparecer en los listados activos: históricos, finalizados anticipadamente
+// o marcados explícitamente como no renovados.
+function contratoCerrado(c) {
+  return c.estado === 'Histórico' || c.estado === 'Finalizado' || c.estado === 'No renovado';
+}
+
 function diasParaVencer(fechaStr) {
   if (!fechaStr) return null;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -1399,6 +1436,8 @@ function badgeClass(estado) {
   if (estado === 'Activo') return 'green';
   if (estado === 'Por vencer') return 'amber';
   if (estado === 'Renovación') return 'red';
+  if (estado === 'Finalizado') return 'gray';
+  if (estado === 'No renovado') return 'gray';
   if (estado === 'Histórico') return 'gray2';
   return 'gray';
 }
@@ -1500,7 +1539,7 @@ document.getElementById('f-frecuencia').addEventListener('change', recalcProxCob
 function updateStats() {
   const activos = contratos.filter(c => c.estado === 'Activo').length;
   const vencer = contratos.filter(c => {
-    if (c.estado === 'Histórico') return false;
+    if (contratoCerrado(c)) return false;
     const d = diasParaVencer(c.vencimiento);
     return c.estado !== 'Vencido' && d !== null && d >= 0 && d <= 60;
   }).length;
@@ -1590,7 +1629,7 @@ function updateAlerts() {
   // ── SECCIÓN 1: COBROS ──
   const cobros = [];
   contratos.forEach(c => {
-    if (c.estado === 'Histórico') return;
+    if (contratoCerrado(c)) return;
     // Si el contrato ya venció, no debe generar cobros hasta que se renueve
     const diasVencContrato = diasParaVencer(c.vencimiento);
     if (diasVencContrato !== null && diasVencContrato < 0) return;
@@ -1714,8 +1753,8 @@ function updateAlerts() {
   // ── SECCIÓN RENOVACIONES ──
   const renovaciones = [];
   contratos.forEach(c => {
-    // Excluir ya históricos y ya renovados
-    if (c.estado === 'Histórico') return;
+    // Excluir cerrados (históricos, finalizados o marcados como no renovados)
+    if (contratoCerrado(c)) return;
     // Ocultar si ya fue renovado (tiene un contrato nuevo que lo reemplaza)
     if (c.renovadoPorId) return;
     const dias = diasParaVencer(c.vencimiento);
@@ -1766,17 +1805,41 @@ function renderRenovacionCards(items) {
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; margin-left:auto;">
         <div class="alert-days ${a.badge.cls}">${a.badge.text}</div>
-        <button class="renov-btn" title="Renovar este contrato" style="font-family:var(--sans); font-size:11px; font-weight:700; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap; transition:all .12s;">🔄 Renovar</button>
+        <div style="display:flex; gap:6px;">
+          <button class="no-renov-btn" title="Marcar como no renovado" style="font-family:var(--sans); font-size:11px; font-weight:700; padding:5px 10px; border-radius:var(--radius-sm); border:1px solid var(--red); background:transparent; color:var(--red); cursor:pointer; white-space:nowrap; transition:all .12s;">🚫 No renovar</button>
+          <button class="renov-btn" title="Renovar este contrato" style="font-family:var(--sans); font-size:11px; font-weight:700; padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap; transition:all .12s;">🔄 Renovar</button>
+        </div>
       </div>
     `;
     div.querySelector('.renov-btn').addEventListener('click', e => {
       e.stopPropagation();
       openRenovarContrato(a.contractId);
     });
+    div.querySelector('.no-renov-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      marcarNoRenovado(a.contractId);
+    });
     div.addEventListener('click', () => openDetailPanel(a.contractId));
     container.appendChild(div);
   });
 }
+
+// ===================== MARCAR COMO NO RENOVADO =====================
+async function marcarNoRenovado(id) {
+  const c = contratos.find(x => x.id === id);
+  if (!c) return;
+  const ok = confirm(`¿Confirmas que el contrato de "${c.nombre}" (${c.inquilino}) no será renovado?\n\nPasará a estado "No renovado" y dejará de aparecer en cobros y renovaciones pendientes.`);
+  if (!ok) return;
+
+  const actualizado = {
+    ...c,
+    estado: 'No renovado',
+    fechaNoRenovacion: new Date().toISOString().split('T')[0],
+  };
+  await setDoc(doc(db, 'contratos', id), actualizado);
+  notify(`🚫 Contrato marcado como no renovado: ${c.nombre}`);
+}
+window.marcarNoRenovado = marcarNoRenovado;
 
 // ===================== MODAL RENOVAR CONTRATO =====================
 let renovandoId = null;
@@ -1888,6 +1951,49 @@ async function confirmarRenovacion() {
 window.openRenovarContrato = openRenovarContrato;
 window.confirmarRenovacion = confirmarRenovacion;
 
+// ===================== MODAL FINALIZAR CONTRATO ANTICIPADAMENTE =====================
+let finalizandoId = null;
+
+function openFinalizarContrato(id) {
+  const c = contratos.find(x => x.id === id);
+  if (!c) return;
+  finalizandoId = id;
+
+  document.getElementById('fin-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('fin-motivo').value = '';
+
+  document.getElementById('finalizar-contrato-info').innerHTML = `
+    <div style="font-weight:700; font-size:14px; margin-bottom:4px;">🏠 ${c.nombre}</div>
+    <div style="color:var(--text2); margin-bottom:2px;">👤 ${c.inquilino}</div>
+    <div style="color:var(--text3); font-size:11px; font-family:var(--mono);">
+      Contrato: ${formatDate(c.inicio)} → ${formatDate(c.vencimiento)} · $${parseFloat(c.monto).toLocaleString('es')} USD
+    </div>
+  `;
+  document.getElementById('modal-finalizar-contrato').classList.add('open');
+}
+
+async function confirmarFinalizarContrato() {
+  const fecha = document.getElementById('fin-fecha').value;
+  if (!fecha) { notify('⚠️ Ingresa la fecha de finalización'); return; }
+
+  const c = contratos.find(x => x.id === finalizandoId);
+  if (!c) return;
+
+  const motivo = document.getElementById('fin-motivo').value.trim();
+  const actualizado = {
+    ...c,
+    estado: 'Finalizado',
+    fechaFinalizacion: fecha,
+    motivoFinalizacion: motivo,
+  };
+  await setDoc(doc(db, 'contratos', finalizandoId), actualizado);
+
+  closeModal('modal-finalizar-contrato');
+  notify(`🛑 Contrato finalizado: ${c.nombre} (${formatDate(fecha)})`);
+}
+window.openFinalizarContrato = openFinalizarContrato;
+window.confirmarFinalizarContrato = confirmarFinalizarContrato;
+
 // ===================== RENDER ROWS =====================
 function makeRow(c, tableId, showDel = true) {
   const dias = diasParaVencer(c.vencimiento);
@@ -1922,7 +2028,7 @@ function renderTables() {
   renderDashTable();
 
   const tables = {
-    vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return c.estado !== 'Histórico' && d !== null && d <= 60 && c.estado !== 'Vencido'; } },
+    vencer: { el: document.getElementById('vencer-table'), empty: document.getElementById('vencer-empty'), filter: c => { const d = diasParaVencer(c.vencimiento); return !contratoCerrado(c) && d !== null && d <= 60 && c.estado !== 'Vencido'; } },
     renov:  { el: document.getElementById('renov-table'),  empty: document.getElementById('renov-empty'),  filter: c => c.estado === 'Vencido' || c.estado === 'Renovación' },
   };
   renderFullTable();
@@ -2109,6 +2215,8 @@ function openDetailPanel(id) {
       <div class="detail-row"><span class="detail-label">Vencimiento</span><span class="detail-val">${formatDate(c.vencimiento)}</span></div>
       <div class="detail-row"><span class="detail-label">Depósito</span><span class="detail-val">${c.deposito ? '$' + parseFloat(c.deposito).toLocaleString('es') + ' USD' : '—'}</span></div>
       <div class="detail-row"><span class="detail-label">Último pago</span><span class="detail-val">${formatDate(c.ultimoPago)}</span></div>
+      ${c.estado === 'Finalizado' && c.fechaFinalizacion ? `<div class="detail-row"><span class="detail-label">Finalizado el</span><span class="detail-val" style="color:var(--red); font-weight:700;">${formatDate(c.fechaFinalizacion)}${c.motivoFinalizacion ? ' · ' + c.motivoFinalizacion : ''}</span></div>` : ''}
+      ${c.estado === 'No renovado' ? `<div class="detail-row"><span class="detail-label">Estado</span><span class="detail-val" style="color:var(--red); font-weight:700;">🚫 No renovado${c.fechaNoRenovacion ? ' · ' + formatDate(c.fechaNoRenovacion) : ''}</span></div>` : ''}
     </div>
 
     <div class="detail-section">
@@ -2173,6 +2281,7 @@ function openDetailPanel(id) {
     <div class="detail-actions" style="flex-direction:column; gap:10px;">
       <button class="btn primary" data-action="pago" data-id="${c.id}" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:14px; padding:10px 18px;">💰 Registrar pago</button>
       <button class="btn secondary" data-action="editar" data-id="${c.id}" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:13px; padding:9px 18px; border-color:var(--accent); color:var(--accent);">✏️ Editar contrato</button>
+      ${!contratoCerrado(c) ? `<button class="btn secondary" data-action="finalizar" data-id="${c.id}" style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; font-size:13px; padding:9px 18px; border-color:var(--red); color:var(--red);">🛑 Finalizar contrato anticipadamente</button>` : ''}
     </div>
   `;
   document.getElementById('detail-backdrop').classList.add('open');
@@ -2188,6 +2297,9 @@ function openDetailPanel(id) {
       } else if (action === 'editar') {
         closeDetailPanel();
         setTimeout(() => editContrato(id), 150);
+      } else if (action === 'finalizar') {
+        closeDetailPanel();
+        setTimeout(() => openFinalizarContrato(id), 150);
       }
     });
   });
@@ -2747,7 +2859,7 @@ function filtrarCanonRevisiones(filtro) {
 function updateCanonRevBadge() {
   // Badge = contratos con canonCond activa que NO tienen revisión hecha
   const pendientes = contratos.filter(c =>
-    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && c.estado !== 'Histórico' && !c.canonRevisionHecha
+    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && !contratoCerrado(c) && !c.canonRevisionHecha
   ).length;
   const el = document.getElementById('sb-canon-rev');
   if (el) { el.textContent = pendientes; el.style.display = pendientes > 0 ? 'inline-block' : 'none'; }
@@ -2761,7 +2873,7 @@ function renderCanonRevisiones() {
   // Construir lista combinada: contratos con canon + sus registros de revisión
   // Mostrar contratos con condición de canon (no Histórico), más todos los registros
   const contratosPendientes = contratos.filter(c =>
-    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && c.estado !== 'Histórico'
+    c.canonCond && c.canonCond !== 'Fijo' && c.canonCond !== '' && !contratoCerrado(c)
   );
 
   // Merge: para cada contrato con canon, mostrar su estado; los registros históricos son filas adicionales
