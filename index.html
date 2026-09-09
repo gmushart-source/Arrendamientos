@@ -1591,6 +1591,9 @@ function updateAlerts() {
   const cobros = [];
   contratos.forEach(c => {
     if (c.estado === 'Histórico') return;
+    // Si el contrato ya venció, no debe generar cobros hasta que se renueve
+    const diasVencContrato = diasParaVencer(c.vencimiento);
+    if (diasVencContrato !== null && diasVencContrato < 0) return;
     const prox = proxCobroStr(c);
     if (prox) {
       const diasCobro = diasParaVencer(prox);
