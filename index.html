@@ -1111,6 +1111,43 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   </div>
 </div>
 
+<!-- ===== MODAL EDITAR PAGO ===== -->
+<div class="modal-backdrop" id="modal-editar-pago">
+  <div class="modal" style="width:480px">
+    <div class="modal-title">✏️ Editar pago registrado</div>
+    <div id="editar-pago-info" style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:18px; font-size:13px;"></div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Fecha del pago *</label>
+        <input type="date" id="ep-fecha">
+      </div>
+      <div class="field">
+        <label>Monto (USD) *</label>
+        <input type="number" id="ep-monto" min="0" step="0.01">
+      </div>
+      <div class="field">
+        <label>Método de pago</label>
+        <input type="text" id="ep-metodo" placeholder="Ej: Transferencia, Efectivo, Zelle">
+      </div>
+      <div class="field">
+        <label>Referencia</label>
+        <input type="text" id="ep-referencia" placeholder="Nº de referencia (opcional)">
+      </div>
+      <div class="field" style="grid-column:span 2">
+        <label>Observaciones</label>
+        <textarea id="ep-obs" placeholder="Notas sobre este pago…" style="min-height:60px"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn danger" onclick="eliminarPagoRegistrado()">🗑 Eliminar pago</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn secondary" onclick="closeModal('modal-editar-pago')">Cancelar</button>
+        <button class="btn primary" onclick="confirmarEditarPago()">💾 Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- NOTIFICACIÓN -->
 <div class="notif" id="notif"></div>
 
@@ -2256,14 +2293,15 @@ function openDetailPanel(id) {
     ${c.historialPagos && c.historialPagos.length > 0 ? `
     <div class="detail-section">
       <div class="detail-section-title">🧾 Historial de pagos</div>
-      ${c.historialPagos.slice(0,5).map(p => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px;">
+      ${(historialExpandidoId === c.id ? c.historialPagos : c.historialPagos.slice(0,5)).map((p, i) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px;">
           <span style="color:var(--text3); font-family:var(--mono);">${formatDate(p.fecha)}</span>
           <span style="font-weight:700; font-family:var(--mono); color:var(--accent);">$${parseFloat(p.monto).toLocaleString('es')}</span>
           <span style="color:var(--text2);">${p.metodo || '—'}</span>
           ${p.referencia ? `<span style="color:var(--text3); font-size:10px;">#${p.referencia}</span>` : '<span></span>'}
+          <button class="edit-pago-btn" data-contract="${c.id}" data-idx="${i}" title="Editar este pago" style="background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px; flex-shrink:0;">✏️</button>
         </div>`).join('')}
-      ${c.historialPagos.length > 5 ? `<div style="font-size:11px; color:var(--text3); margin-top:6px; text-align:center;">+${c.historialPagos.length - 5} pagos anteriores</div>` : ''}
+      ${c.historialPagos.length > 5 ? `<div style="font-size:11px; color:var(--accent); margin-top:6px; text-align:center; cursor:pointer; font-weight:600;" onclick="toggleHistorialPagos('${c.id}')">${historialExpandidoId === c.id ? '▲ Ver menos' : `▼ Ver los ${c.historialPagos.length} pagos`}</div>` : ''}
     </div>` : ''}
 
     <div class="detail-section">
@@ -2303,7 +2341,20 @@ function openDetailPanel(id) {
       }
     });
   });
+  detailContent.querySelectorAll('.edit-pago-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openEditarPago(btn.dataset.contract, parseInt(btn.dataset.idx, 10));
+    });
+  });
 }
+
+let historialExpandidoId = null;
+function toggleHistorialPagos(contractId) {
+  historialExpandidoId = historialExpandidoId === contractId ? null : contractId;
+  openDetailPanel(contractId);
+}
+window.toggleHistorialPagos = toggleHistorialPagos;
 
 function closeDetailPanel() {
   document.getElementById('detail-backdrop').classList.remove('open');
@@ -2608,6 +2659,74 @@ async function confirmarPago() {
   closeModal('modal-pago');
   notify(`✓ Pago registrado — próximo cobro: ${formatDate(proxCobro)}`);
 }
+
+// ===================== EDITAR / ELIMINAR PAGO REGISTRADO =====================
+let editandoPagoContratoId = null;
+let editandoPagoIdx = null;
+
+function openEditarPago(contratoId, idx) {
+  const c = contratos.find(x => x.id === contratoId);
+  if (!c || !c.historialPagos || !c.historialPagos[idx]) return;
+  editandoPagoContratoId = contratoId;
+  editandoPagoIdx = idx;
+
+  const p = c.historialPagos[idx];
+  document.getElementById('ep-fecha').value = p.fecha || '';
+  document.getElementById('ep-monto').value = p.monto ?? '';
+  document.getElementById('ep-metodo').value = p.metodo || '';
+  document.getElementById('ep-referencia').value = p.referencia || '';
+  document.getElementById('ep-obs').value = p.obs || '';
+
+  document.getElementById('editar-pago-info').innerHTML = `
+    <div style="font-weight:700; font-size:14px; margin-bottom:2px;">${c.nombre}</div>
+    <div style="color:var(--text2); font-size:12px;">👤 ${c.inquilino}</div>
+  `;
+  document.getElementById('modal-editar-pago').classList.add('open');
+}
+window.openEditarPago = openEditarPago;
+
+async function confirmarEditarPago() {
+  const fecha = document.getElementById('ep-fecha').value;
+  const monto = document.getElementById('ep-monto').value;
+  if (!fecha || !monto) { notify('⚠️ Ingresa la fecha y el monto'); return; }
+
+  const c = contratos.find(x => x.id === editandoPagoContratoId);
+  if (!c || !c.historialPagos || !c.historialPagos[editandoPagoIdx]) return;
+
+  c.historialPagos[editandoPagoIdx] = {
+    fecha,
+    monto: parseFloat(monto),
+    metodo: document.getElementById('ep-metodo').value,
+    referencia: document.getElementById('ep-referencia').value.trim(),
+    obs: document.getElementById('ep-obs').value.trim(),
+  };
+
+  // Si es el pago más reciente, mantener "último pago" sincronizado
+  if (editandoPagoIdx === 0) c.ultimoPago = fecha;
+
+  await setDoc(doc(db, 'contratos', c.id), c);
+  closeModal('modal-editar-pago');
+  notify('✓ Pago actualizado');
+  openDetailPanel(c.id);
+}
+window.confirmarEditarPago = confirmarEditarPago;
+
+async function eliminarPagoRegistrado() {
+  const c = contratos.find(x => x.id === editandoPagoContratoId);
+  if (!c || !c.historialPagos || !c.historialPagos[editandoPagoIdx]) return;
+  const ok = confirm('¿Eliminar este pago del historial? Esta acción no se puede deshacer.');
+  if (!ok) return;
+
+  c.historialPagos.splice(editandoPagoIdx, 1);
+  // Si se elimina el pago más reciente, "último pago" pasa a ser el que queda de primero
+  c.ultimoPago = c.historialPagos[0] ? c.historialPagos[0].fecha : '';
+
+  await setDoc(doc(db, 'contratos', c.id), c);
+  closeModal('modal-editar-pago');
+  notify('🗑 Pago eliminado del historial');
+  openDetailPanel(c.id);
+}
+window.eliminarPagoRegistrado = eliminarPagoRegistrado;
 
 async function deleteContrato(id) {
   if (!isAdmin) { notify('⛔ Solo el administrador puede eliminar'); return; }
