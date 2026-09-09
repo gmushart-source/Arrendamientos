@@ -2419,16 +2419,6 @@ async function confirmarPago() {
   if (idx < 0) return;
   const c = contratos[idx];
 
-  const proxCobroActual = proxCobroStr(c);
-  // Validar ventana de pago: desde la fecha de cobro hasta 5 días después
-  if (proxCobroActual && !esPagoEnVentana(fecha, proxCobroActual)) {
-    const fc = new Date(proxCobroActual + 'T00:00:00');
-    const limite = new Date(fc);
-    limite.setDate(limite.getDate() + 5);
-    notify(`⚠️ La fecha de pago debe estar entre ${formatDate(proxCobroActual)} y ${formatDate(limite.toISOString().split('T')[0])}`);
-    return;
-  }
-
   const proxCobro = calcProxCobro(fecha, c.frecuencia, diaInicioContrato(c));
 
   // Guardar en historial de pagos
