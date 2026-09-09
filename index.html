@@ -2650,6 +2650,9 @@ async function confirmarPago() {
     metodo: document.getElementById('p-metodo').value,
     referencia: document.getElementById('p-referencia').value.trim(),
     obs: document.getElementById('p-obs').value.trim(),
+    // Guardamos el período que este pago cubría, para poder devolver el
+    // contrato a ese período exacto si el pago se elimina más adelante.
+    proxCobroAntes: periodoQueTocaba,
   });
 
   c.ultimoPago = fecha;
@@ -2717,13 +2720,23 @@ async function eliminarPagoRegistrado() {
   const ok = confirm('¿Eliminar este pago del historial? Esta acción no se puede deshacer.');
   if (!ok) return;
 
+  const pagoEliminado = c.historialPagos[editandoPagoIdx];
+  const eraElMasReciente = editandoPagoIdx === 0;
+
   c.historialPagos.splice(editandoPagoIdx, 1);
   // Si se elimina el pago más reciente, "último pago" pasa a ser el que queda de primero
   c.ultimoPago = c.historialPagos[0] ? c.historialPagos[0].fecha : '';
 
+  if (eraElMasReciente) {
+    // Devolver el próximo cobro al período que cubría el pago eliminado,
+    // para que el contrato vuelva a cobros pendientes con la fecha correcta
+    // y se pueda registrar el pago que en verdad corresponde.
+    c.proxCobro = pagoEliminado.proxCobroAntes || pagoEliminado.fecha;
+  }
+
   await setDoc(doc(db, 'contratos', c.id), c);
   closeModal('modal-editar-pago');
-  notify('🗑 Pago eliminado del historial');
+  notify(eraElMasReciente ? `🗑 Pago eliminado — el contrato vuelve a cobros pendientes (${formatDate(c.proxCobro)})` : '🗑 Pago eliminado del historial');
   openDetailPanel(c.id);
 }
 window.eliminarPagoRegistrado = eliminarPagoRegistrado;
