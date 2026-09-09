@@ -2546,9 +2546,11 @@ function openRegistrarPago(id) {
 
   // Info del contrato
   const diaIni = diaInicioContrato(c);
-  const prox = calcProxCobro(hoy, c.frecuencia, diaIni);
-  // Calcular fecha límite de pago (fecha de cobro + 5 días)
+  // El próximo cobro (preview) siempre avanza desde el período que tocaba
+  // pagar, no desde la fecha que se elija para registrar el pago.
   const proxCobroActual = proxCobroStr(c);
+  const prox = calcProxCobro(proxCobroActual || hoy, c.frecuencia, diaIni);
+  // Calcular fecha límite de pago (fecha de cobro + 5 días)
   let ventanaInfo = '';
   if (proxCobroActual) {
     const fechaLimite = new Date(proxCobroActual + 'T00:00:00');
@@ -2564,10 +2566,9 @@ function openRegistrarPago(id) {
   `;
   document.getElementById('p-prox-label').textContent = formatDate(prox);
 
-  // Actualizar preview al cambiar fecha
+  // Actualizar preview al cambiar fecha (el monto puede depender de la fecha
+  // por el segundo canon, pero el próximo cobro NO depende de la fecha de pago)
   document.getElementById('p-fecha').onchange = function() {
-    const np = calcProxCobro(this.value, c.frecuencia, diaIni);
-    document.getElementById('p-prox-label').textContent = formatDate(np);
     document.getElementById('p-monto').value = montoVigente(c, this.value);
   };
 
@@ -2583,7 +2584,12 @@ async function confirmarPago() {
   if (idx < 0) return;
   const c = contratos[idx];
 
-  const proxCobro = calcProxCobro(fecha, c.frecuencia, diaInicioContrato(c));
+  // El próximo cobro debe avanzar un ciclo a partir del período que
+  // tocaba pagar (proxCobro actual), NO a partir de la fecha en que se
+  // registra el pago. Así, un pago adelantado o atrasado no desfasa el
+  // calendario de cobros del contrato.
+  const periodoQueTocaba = proxCobroStr(c) || fecha;
+  const proxCobro = calcProxCobro(periodoQueTocaba, c.frecuencia, diaInicioContrato(c));
 
   // Guardar en historial de pagos
   if (!c.historialPagos) c.historialPagos = [];
